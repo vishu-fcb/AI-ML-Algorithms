@@ -62,10 +62,21 @@ y_pred = regressor.predict(X_test)
 np.set_printoptions(precision = 2)
 print(np.concatenate((y_pred.reshape(len(y_pred),1) ,Y_test.reshape(len(Y_test),1)),1))
 
-from sklearn.metrics import r2_score
-print(r2_score(Y_test, y_pred))
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
+# Calculate Mean Absolute Error (MAE)
+mae = mean_absolute_error(Y_test, y_pred)
+print(f"Mean Absolute Error (MAE): {mae:.2f}")
 
+# Calculate Mean Squared Error (MSE)
+mse = mean_squared_error(Y_test, y_pred)
+print(f"Mean Squared Error (MSE): {mse:.2f}")
+
+# Calculate R-squared (R2) score
+r2 = r2_score(Y_test, y_pred)
+print(r2)
+
+# Print the coefficients and Y intercept 
 print(regressor.coef_)
 print(regressor.intercept_)
 
