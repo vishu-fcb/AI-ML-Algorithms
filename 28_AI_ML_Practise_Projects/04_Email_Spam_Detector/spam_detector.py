@@ -84,7 +84,8 @@ print(accuracy_score(Y_test, Y_pred))
 
 ### Sample Example with a random message
 
-new_review = 'We are trying to contact you. Last weekends draw shows that you won a £1000 prize GUARANTEED. Call 09064012160. Claim Code K52. Valid 12hrs only. 150ppm'
+new_review = input('Write your email format\n')
+#new_review = 'Hello shivangi, hoep you are dping well'
 new_review = re.sub('[^a-zA-Z]', ' ', new_review)
 new_review = new_review.lower()
 new_review = new_review.split()
@@ -96,4 +97,6 @@ new_review = ' '.join(new_review)
 new_corpus = [new_review]
 new_X_test = cv.transform(new_corpus).toarray()
 new_y_pred = classifier.predict(new_X_test)
+print(new_review)
+print('spam or valid')
 print(new_y_pred)
