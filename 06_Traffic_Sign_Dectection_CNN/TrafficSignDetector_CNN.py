@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on 07.01.2024 15:01:26 2024
+Created on Wed Jan 17 15:01:26 2024
 
 """
 
@@ -17,6 +17,7 @@ from sklearn.model_selection import train_test_split
 from tensorflow import keras
 
 print(tf.__version__)
+
 
 ### Categories definition
 
@@ -69,6 +70,7 @@ class_labels = { 0:'Speed limit 20km/h',
             41:'End of no passing zone', 
             42:'End of no passing zone for vehicle > 3.5 tons' }
 
+
 ### Data preprocessing stage
 
 training_datagenerator = ImageDataGenerator(
@@ -99,7 +101,6 @@ for i in range(val_categories):
             print("Error in " + img)
 
 # Changing the list to numpy array
-            
 image_data = np.array(image_data)
 image_labels = np.array(image_labels)
 
@@ -107,10 +108,12 @@ print(image_data.shape, image_labels.shape)
 
 ### Splitting the data set into training and test step
 
+
 X_train, X_test, y_train, y_test = train_test_split(image_data, image_labels, test_size=0.2, random_state=0, shuffle=True)
 
 X_train = X_train/255 
 X_test = X_test/255
+
 
 y_train = tf.keras.utils.to_categorical(y_train, val_categories)
 y_test = tf.keras.utils.to_categorical(y_test, val_categories)
@@ -123,15 +126,15 @@ cnn = tf.keras.models.Sequential()
 
 ### Add the convolutional layer
 
-cnn.add(keras.layers.Conv2D(filters=32, kernel_size=(3,3), activation='relu', input_shape=(64,64,3)))
+cnn.add(tf.keras.layers.Conv2D(filters=64, kernel_size=(3,3), activation='relu', input_shape=(64,64,3)))
 
 ### Add the maxpool layer
 
-cnn.add(keras.layers.MaxPool2D(pool_size=(2, 2)))
+cnn.add(tf.keras.layers.MaxPool2D(pool_size= 2, strides= 2))
 
 ### Add second convolutional and pool layer 
 
-cnn.add(tf.keras.layers.Conv2D(filters=32, kernel_size=(3,3), activation='relu'))
+cnn.add(tf.keras.layers.Conv2D(filters=64, kernel_size=(3,3), activation='relu'))
 
 cnn.add(tf.keras.layers.MaxPool2D(pool_size= 2, strides= 2))
 
@@ -141,19 +144,22 @@ cnn.add (tf.keras.layers.Flatten())
 
 ### Adding the first neurons layers
 
-cnn.add(tf.keras.layers.Dense(units = 512, activation= 'relu'))
+cnn.add(tf.keras.layers.Dense(units = 512, activation= 'relu', kernel_initializer='he_normal'))
+cnn.add(tf.keras.layers.Dropout(0.5))
 
 ### Adding the output layer
 
 cnn.add(tf.keras.layers.Dense(units=43, activation = 'softmax'))
 
+
 ### CNN Compilation step
 
-cnn.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+cnn.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss='categorical_crossentropy', metrics=['accuracy'])
 
 # ### Training the CNN on the training set and evlaute on test set
 
-cnn.fit(training_datagenerator.flow(X_train, y_train, batch_size=32), epochs=25, validation_data=(X_test, y_test))
+cnn.fit(training_datagenerator.flow(X_train, y_train, batch_size=32), epochs=30, validation_data=(X_test, y_test))
+
 
 ### Validate the model on test data
 
