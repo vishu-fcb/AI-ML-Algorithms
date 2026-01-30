@@ -1,14 +1,80 @@
-.venv
-.env
-.ipynb_checkpoints
-.gradio
+# ==============================================================================
+# BeyondTech Predictive Maintenance - .gitignore
+# ==============================================================================
 
-# Python
+# Generated Data Files (too large for git)
+# These will be created by running: python synthetic_data_generator.py
+Generated_output_data/*.xlsx
+Generated_output_data/*.csv
+!Generated_output_data/.gitkeep
+
+# Trained Model Files (too large for git)  
+# These will be created by running: python AI_prediction_model.py
+Trained_Model/*.pkl
+Trained_Model/*.joblib
+!Trained_Model/.gitkeep
+
+# Model Reports (generated files)
+Model_Reports/*.txt
+Model_Reports/*.csv
+!Model_Reports/.gitkeep
+
+# Benchmarking Reports (generated files)
+Benchmarking_Reports/*.txt
+Benchmarking_Reports/*.csv
+Benchmarking_Reports/plots/*.png
+Benchmarking_Reports/plots/*.jpg
+!Benchmarking_Reports/.gitkeep
+!Benchmarking_Reports/plots/.gitkeep
+
+# Visualizations (generated plots)
+Visualizations/*.png
+Visualizations/*.jpg
+Visualizations/*.pdf
+!Visualizations/.gitkeep
+
+# Python Cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyc
 .Python
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+.env
+.gradio
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS Generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Jupyter Notebooks (if any)
+.ipynb_checkpoints/
+*.ipynb
+
+# Distribution / Packaging
 build/
 develop-eggs/
 dist/
@@ -25,68 +91,30 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
-.venv/
-venv/
-ENV/
-env/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-*.gitkeep
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Data Files (too large for git)
-Generated_output_data/*.xlsx
-Generated_output_data/*.csv
-Augmented_Datasets/*.csv
-Public_Datasets/
-
-# Model Files (too large for git)
-Trained_Model/*.pkl
-Trained_Model/*.joblib
-
-# Reports (generated files)
-Model_Reports/*.txt
-Model_Reports/*.csv
-Benchmarking_Reports/*.txt
-Benchmarking_Reports/*.csv
-Benchmarking_Reports/plots/*.png
-
-# Visualizations
-Visualizations/*.png
-Visualizations/*.jpg
-Visualizations/*.pdf
-
 # Logs
 *.log
+logs/
 
-# Jupyter Notebooks (if any)
-.ipynb_checkpoints/
-*.ipynb
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
-# Keep directory structure but ignore contents
-!Generated_output_data/.gitkeep
-!Trained_Model/.gitkeep
-!Model_Reports/.gitkeep
-!Benchmarking_Reports/.gitkeep
-!Visualizations/.gitkeep
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Data Files (too large for git)
-Generated_output_data/*.xlsx
-Generated_output_data/*.csv
+Benchmarking_Reports/
+Generated_output_data/
+Model_Reports/
+Public_Datasets/
+Trained Model/
+Trained_Model/
+Visualizations/
 
-# Model Files (too large for git)
-Trained_Model/*.pkl
-Trained_Model/*.joblib
-
-# Keep directory structure but ignore contents
-!Generated_output_data/.gitkeep
-!Trained_Model/.gitkeep
+# ==============================================================================
+# KEEP THESE FOLDERS BUT IGNORE THEIR CONTENTS
+# ==============================================================================
+# The .gitkeep files preserve folder structure while ignoring generated content
