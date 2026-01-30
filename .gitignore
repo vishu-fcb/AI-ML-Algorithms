@@ -78,3 +78,15 @@ Visualizations/*.pdf
 !Model_Reports/.gitkeep
 !Benchmarking_Reports/.gitkeep
 !Visualizations/.gitkeep
+
+# Data Files (too large for git)
+Generated_output_data/*.xlsx
+Generated_output_data/*.csv
+
+# Model Files (too large for git)
+Trained_Model/*.pkl
+Trained_Model/*.joblib
+
+# Keep directory structure but ignore contents
+!Generated_output_data/.gitkeep
+!Trained_Model/.gitkeep
