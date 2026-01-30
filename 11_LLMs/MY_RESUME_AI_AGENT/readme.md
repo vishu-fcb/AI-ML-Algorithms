@@ -23,37 +23,38 @@ The chatbot runs in a Gradio interface and includes interactive tools such as:
 
 Clone the repository:
 
-git <clone the repo>
-cd <navigate to the folder MY_RESUME_AI_AGENT>
+- git <clone the repo>
+- cd <navigate to the folder MY_RESUME_AI_AGENT>
 
 # Create a virtual environment (recommended):
 
-python -m venv venv
-source venv/bin/activate   # Mac/Linux
-venv\Scripts\activate      # Windows
+- python -m venv venv
+- source venv/bin/activate   # Mac/Linux
+- venv\Scripts\activate      # Windows
 
 # Install dependencies 
 
-pip install -r requirements.txt
+- pip install -r requirements.txt
 
 # Create a .env file in the root directory and set:
 
-OPENAI_API_KEY=sk-your-openai-key
-GOOGLE_API_KEY=your-gemini-key
-PUSHOVER_TOKEN=your-pushover-token
-PUSHOVER_USER=your-pushover-user
+- OPENAI_API_KEY=sk-your-openai-key
+- GOOGLE_API_KEY=your-gemini-key
+- PUSHOVER_TOKEN=your-pushover-token
+- PUSHOVER_USER=your-pushover-user
 
 # Run the app
-python3 my_knowledge_worker.py
+- python3 my_knowledge_worker.py
 
-This will launch a Gradio web interface in your browser.
-You can now chat with the CV assistant.
+- This will launch a Gradio web interface in your browser.
+- You can now chat with the CV assistant.
 
 # Tools Available
 
-record_user_details → Save email/name for contact
-record_unknown_question → Capture unanswerable queries
-get_linkedin → Share Vishal’s LinkedIn profile
-get_speaker_profile → Show conference speaker highlights
+- record_user_details → Save email/name for contact
+- record_unknown_question → Capture unanswerable queries
+- get_linkedin → Share Vishal’s LinkedIn profile
+- get_speaker_profile → Show conference speaker highlights
+
 
 

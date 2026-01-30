@@ -22,27 +22,28 @@ A sleek and simple LLM-powered chatbot that lets you ask technical questions and
 
 1. **Clone the repo**:
    
-   git clone https://github.com/vishu-fcb/AI-ML-Algorithms.git
-   cd AI-ML-Algorithms\11_LLMs\AI_Technical_Assistant
+   - git clone https://github.com/vishu-fcb/AI-ML-Algorithms.git
+   - cd AI-ML-Algorithms\11_LLMs\AI_Technical_Assistant
 
 2. **Create a virtual environment**:
-    python -m venv .venv
-    source .venv/bin/activate      # Linux/macOS
-    .venv\Scripts\activate         # Windows
+    - python -m venv .venv
+    - source .venv/bin/activate      # Linux/macOS
+    - .venv\Scripts\activate         # Windows
 
 3. **Install dependencies**:
-    pip install -r requirements.txt
+    - pip install -r requirements.txt
 
 4. **Set up .env file**:
-    Create an OPEN API KEY and save it in a .env file: https://platform.openai.com/docs/quickstart/create-and-export-an-api-key?api-mode=responses
-    Add your key to the .env file like this:
-    OPENROUTER_API_KEY="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    - Create an OPEN API KEY and save it in a .env file: https://platform.openai.com/docs/quickstart/create-and-export-an-api-key?api-mode=responses
+    - Add your key to the .env file like this:
+    - OPENROUTER_API_KEY="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 5. **Running Ollama**:
-    https://ollama.com
-    Run in your terminal: ollama run llama3
+    - https://ollama.com
+    - Run in your terminal: ollama run llama3
 
 6. **Run the code in Jupyter notebook**:
-    jupyter notebook
+    - jupyter notebook
+
 
 
