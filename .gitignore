@@ -2,3 +2,79 @@
 .env
 .ipynb_checkpoints
 .gradio
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data Files (too large for git)
+Generated_output_data/*.xlsx
+Generated_output_data/*.csv
+Augmented_Datasets/*.csv
+Public_Datasets/
+
+# Model Files (too large for git)
+Trained_Model/*.pkl
+Trained_Model/*.joblib
+
+# Reports (generated files)
+Model_Reports/*.txt
+Model_Reports/*.csv
+Benchmarking_Reports/*.txt
+Benchmarking_Reports/*.csv
+Benchmarking_Reports/plots/*.png
+
+# Visualizations
+Visualizations/*.png
+Visualizations/*.jpg
+Visualizations/*.pdf
+
+# Logs
+*.log
+
+# Jupyter Notebooks (if any)
+.ipynb_checkpoints/
+*.ipynb
+
+# Keep directory structure but ignore contents
+!Generated_output_data/.gitkeep
+!Trained_Model/.gitkeep
+!Model_Reports/.gitkeep
+!Benchmarking_Reports/.gitkeep
+!Visualizations/.gitkeep
