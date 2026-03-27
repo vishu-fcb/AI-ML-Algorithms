@@ -117,6 +117,15 @@ Visualizations/
 # SOVD EACTROS Demo (separate project, not tracked)
 sovd-eactros-demo/
 
+# VED raw dataset (large download, not tracked)
+10_Predictive Diagnostics/VED_Data/
+
+# Augmented/processed datasets (generated files, regenerate with ved_data_processor.py)
+10_Predictive Diagnostics/Augmented_Datasets/*.csv
+
+# Claude Code memory (local AI assistant state)
+.claude/
+
 # ==============================================================================
 # KEEP THESE FOLDERS BUT IGNORE THEIR CONTENTS
 # ==============================================================================
