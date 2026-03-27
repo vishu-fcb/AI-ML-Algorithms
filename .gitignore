@@ -114,6 +114,9 @@ Trained Model/
 Trained_Model/
 Visualizations/
 
+# SOVD EACTROS Demo (separate project, not tracked)
+sovd-eactros-demo/
+
 # ==============================================================================
 # KEEP THESE FOLDERS BUT IGNORE THEIR CONTENTS
 # ==============================================================================

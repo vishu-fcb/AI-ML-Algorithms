@@ -7,7 +7,6 @@ import streamlit as st
 import pandas as pd
 import pickle
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import numpy as np
 from datetime import datetime
 import os
@@ -74,6 +73,34 @@ st.markdown("""
     .vehicle-card:hover {
         border-color: #00C853;
         transform: scale(1.02);
+    }
+    /* ── Forecast controls: pill-style radio buttons ── */
+    div[data-testid="stRadio"] > div {
+        gap: 6px !important;
+    }
+    div[data-testid="stRadio"] label {
+        background-color: rgba(25, 25, 45, 0.95) !important;
+        color: white !important;
+        padding: 5px 16px !important;
+        border-radius: 8px !important;
+        border: 1px solid rgba(255,255,255,0.18) !important;
+        cursor: pointer !important;
+        font-weight: 500 !important;
+        font-size: 13px !important;
+        transition: all 0.15s !important;
+    }
+    div[data-testid="stRadio"] label:has(input:checked) {
+        background-color: white !important;
+        color: black !important;
+        border-color: white !important;
+    }
+    div[data-testid="stRadio"] label:has(input:checked) p,
+    div[data-testid="stRadio"] label:has(input:checked) span {
+        color: black !important;
+    }
+    /* Hide the radio circle — keep only the label text */
+    div[data-testid="stRadio"] label > div:first-child {
+        display: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -359,63 +386,484 @@ def create_gauge_chart(value, title, max_value=100):
     
     return fig
 
-def create_trend_chart(vehicle_name):
-    """Create historical trend chart (simulated data)"""
-    from datetime import datetime, timedelta
-    dates = pd.date_range(end=datetime.now(), periods=30, freq='D')
-    
-    np.random.seed(hash(vehicle_name) % 2**32)
-    battery_range = 250 + np.cumsum(np.random.randn(30) * 5)
-    health_score = 85 + np.cumsum(np.random.randn(30) * 0.5)
-    
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    
-    fig.add_trace(
-        go.Scatter(
-            x=dates, y=battery_range,
-            mode='lines+markers',
-            name='Battery Range (km)',
-            line=dict(color='#00C853', width=2),
-            marker=dict(size=5)
-        ),
-        secondary_y=False
-    )
-    
-    fig.add_trace(
-        go.Scatter(
-            x=dates, y=health_score,
-            mode='lines+markers',
-            name='Health Score',
-            line=dict(color='#FFB366', width=2),
-            marker=dict(size=5)
-        ),
-        secondary_y=True
-    )
-    
-    fig.update_xaxes(gridcolor='rgba(255,255,255,0.1)')
-    fig.update_yaxes(
-        title_text="Battery Range (km)",
-        gridcolor='rgba(255,255,255,0.1)',
-        title_font=dict(color='#00C853'),
-        secondary_y=False
-    )
-    fig.update_yaxes(
-        title_text="Health Score",
-        title_font=dict(color='#FFB366'),
-        secondary_y=True
-    )
-    
+def create_degradation_forecast(predictions, vehicle_data, vehicle_type):
+    """90-day forward-looking component health degradation forecast."""
+
+    def _h2r(h, a):
+        """hex colour → rgba string"""
+        r, g, b = int(h[1:3],16), int(h[3:5],16), int(h[5:7],16)
+        return f"rgba({r},{g},{b},{a})"
+
+    days = np.arange(0, 91)
+
+    # Daily driving distance estimate
+    avg_spd  = float(vehicle_data.get("Average_Speed", vehicle_data.get("Driving_Speed", 60)))
+    daily_km = float(np.clip(avg_spd * 1.5, 25, 200))
+
+    # Composite intensity factor (braking + style)
+    harsh     = float(vehicle_data.get("Harsh_Braking_Events", 50))
+    style     = float(vehicle_data.get("Driving_Style", 1))
+    intensity = (0.5 + style * 0.35) * (0.7 + harsh / 200.0)
+
+    components = []
+
+    # ── Tire Tread ──────────────────────────────────────────────────────────────
+    if "tire_tread" in predictions:
+        cur = float(predictions["tire_tread"])
+        lo, hi, warn = 1.6, 8.2, 3.0
+        rate = 0.000130 * intensity                         # mm / km
+        raw  = np.maximum(lo - 0.3, cur - rate * daily_km * days)
+        hlth = np.clip((raw - lo) / (hi - lo) * 100, 0, 100)
+        components.append(dict(name="Tires", health=hlth, raw=raw, unit="mm", fmt=".1f",
+                               warn_pct=(warn-lo)/(hi-lo)*100, color="#00E5FF"))
+
+    # ── Brake Pads ──────────────────────────────────────────────────────────────
+    if "brake_thickness" in predictions:
+        cur = float(predictions["brake_thickness"])
+        lo, hi, warn = 3.0, 12.0, 4.0
+        mtn  = float(vehicle_data.get("Mountain_Driving_Percent", 10))
+        rate = 0.000065 * intensity * (1 + mtn / 120.0)    # mm / km
+        raw  = np.maximum(lo - 0.2, cur - rate * daily_km * days)
+        hlth = np.clip((raw - lo) / (hi - lo) * 100, 0, 100)
+        components.append(dict(name="Brake Pads", health=hlth, raw=raw, unit="mm", fmt=".1f",
+                               warn_pct=(warn-lo)/(hi-lo)*100, color="#FF6D00"))
+
+    # ── Battery SoH ─────────────────────────────────────────────────────────────
+    if "battery_soh" in predictions:
+        cur = float(predictions["battery_soh"])
+        lo, hi, warn = 60.0, 100.0, 80.0
+        fc   = float(vehicle_data.get("Fast_Charge_Percentage", 30))
+        dod  = float(vehicle_data.get("Average_Depth_of_Discharge", 60))
+        rate = 0.011 + fc * 0.00025 + dod * 0.00010        # % / day
+        raw  = np.maximum(lo, cur - rate * days)
+        hlth = np.clip((raw - lo) / (hi - lo) * 100, 0, 100)
+        components.append(dict(name="Battery SoH", health=hlth, raw=raw, unit="%", fmt=".1f",
+                               warn_pct=(warn-lo)/(hi-lo)*100, color="#69FF47"))
+
+    # ── Oil Life (ICE / Hybrid only) ────────────────────────────────────────────
+    if "oil_life" in predictions and vehicle_type != "EV":
+        cur = float(predictions["oil_life"])
+        hi, warn = 10500.0, 1500.0
+        raw  = np.maximum(0.0, cur - daily_km * days)
+        hlth = np.clip(raw / hi * 100, 0, 100)
+        components.append(dict(name="Oil Life", health=hlth, raw=raw, unit="km", fmt=".0f",
+                               warn_pct=warn/hi*100, color="#FFD600"))
+
+    # ── Air Filter ──────────────────────────────────────────────────────────────
+    if "air_filter_life" in predictions:
+        cur = float(predictions["air_filter_life"])
+        hi, warn = 25000.0, 2000.0
+        aqi  = float(vehicle_data.get("Air_Quality_Index", 60))
+        rate = daily_km * (1.0 + max(0, aqi - 50) / 180.0)
+        raw  = np.maximum(0.0, cur - rate * days)
+        hlth = np.clip(raw / hi * 100, 0, 100)
+        components.append(dict(name="Air Filter", health=hlth, raw=raw, unit="km", fmt=".0f",
+                               warn_pct=warn/hi*100, color="#E040FB"))
+
+    # ── Coolant ─────────────────────────────────────────────────────────────────
+    if "coolant_life" in predictions:
+        cur = float(predictions["coolant_life"])
+        hi, warn = 70000.0, 5000.0
+        hl   = float(vehicle_data.get("Heavy_Load_Percentage", 15))
+        rate = daily_km * (1.0 + hl / 180.0)
+        raw  = np.maximum(0.0, cur - rate * days)
+        hlth = np.clip(raw / hi * 100, 0, 100)
+        components.append(dict(name="Coolant", health=hlth, raw=raw, unit="km", fmt=".0f",
+                               warn_pct=warn/hi*100, color="#40C4FF"))
+
+    # ── Build figure ─────────────────────────────────────────────────────────────
+    fig = go.Figure()
+
+    # Health zone background bands
+    fig.add_hrect(y0=70, y1=101, fillcolor="rgba(0,200,83,0.06)",   line_width=0, layer="below")
+    fig.add_hrect(y0=40, y1=70,  fillcolor="rgba(255,179,102,0.07)", line_width=0, layer="below")
+    fig.add_hrect(y0=0,  y1=40,  fillcolor="rgba(255,68,68,0.09)",   line_width=0, layer="below")
+
+    # Zone boundary lines
+    fig.add_hline(y=70, line=dict(color="rgba(0,200,83,0.25)",    width=1, dash="dot"))
+    fig.add_hline(y=40, line=dict(color="rgba(255,68,68,0.25)",   width=1, dash="dot"))
+
+    # Zone labels on right axis
+    for y, label, color in [(85, "GOOD", "rgba(0,200,83,0.45)"),
+                             (55, "WARN", "rgba(255,179,102,0.55)"),
+                             (20, "CRIT", "rgba(255,68,68,0.55)")]:
+        fig.add_annotation(x=90, y=y, text=label, xanchor="right",
+                           font=dict(size=9, color=color), showarrow=False)
+
+    # Today marker
+    fig.add_vline(x=0, line=dict(color="rgba(255,255,255,0.5)", width=2))
+    fig.add_annotation(x=1, y=99, text="TODAY", xanchor="left",
+                       font=dict(size=9, color="rgba(255,255,255,0.6)"), showarrow=False)
+
+    annotation_offsets = {}   # spread overlapping annotations
+
+    for comp in components:
+        hlth  = comp["health"]
+        color = comp["color"]
+        fill  = _h2r(color, 0.07)
+
+        # Gradient fill: separate trace for filled area
+        fig.add_trace(go.Scatter(
+            x=np.concatenate([days, days[::-1]]),
+            y=np.concatenate([hlth, np.zeros(len(days))]),
+            fill="toself", fillcolor=fill,
+            line=dict(width=0), showlegend=False,
+            hoverinfo="skip",
+        ))
+
+        # Main line
+        fig.add_trace(go.Scatter(
+            x=days, y=hlth,
+            mode="lines",
+            name=comp["name"],
+            line=dict(color=color, width=2.5, shape="spline", smoothing=0.5),
+            hovertemplate=(
+                f"<b>{comp['name']}</b><br>"
+                "Day %{x}<br>"
+                f"Health: %{{y:.1f}}%<br>"
+                f"Value: %{{customdata:{comp['fmt']}}}{comp['unit']}"
+                "<extra></extra>"
+            ),
+            customdata=comp["raw"],
+        ))
+
+        # Service-due crossing marker
+        warn_h = comp["warn_pct"]
+        cross_day = next(
+            (i for i in range(len(hlth)-1) if hlth[i] >= warn_h > hlth[i+1]),
+            None
+        )
+        if cross_day is not None and cross_day <= 89:
+            fig.add_vline(x=cross_day,
+                          line=dict(color=_h2r(color, 0.5), width=1.5, dash="dash"))
+
+            # Stagger overlapping annotations
+            ay_offset = annotation_offsets.get(cross_day, -38)
+            annotation_offsets[cross_day] = ay_offset - 28
+
+            fig.add_annotation(
+                x=cross_day, y=warn_h,
+                text=f"<b>{comp['name']}</b><br>⚠ Day {cross_day}",
+                showarrow=True, arrowhead=2, arrowsize=0.9,
+                arrowcolor=color,
+                font=dict(color=color, size=10),
+                bgcolor="rgba(10,10,20,0.85)",
+                bordercolor=color, borderwidth=1,
+                borderpad=4,
+                ax=28, ay=ay_offset,
+            )
+
     fig.update_layout(
-        title='30-Day Trends',
-        paper_bgcolor='rgba(30,30,30,0.8)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font={'color': 'white'},
-        hovermode='x unified',
-        height=280,
-        margin=dict(l=10, r=10, t=40, b=10)
+        title=dict(
+            text="90-Day Component Health Forecast",
+            font=dict(size=17, color="white"),
+            x=0.01,
+        ),
+        paper_bgcolor="rgba(12,12,22,0.95)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="white", family="sans-serif"),
+        xaxis=dict(
+            title="Days from Today",
+            range=[-1, 91],
+            gridcolor="rgba(255,255,255,0.05)",
+            tickcolor="rgba(255,255,255,0.2)",
+            zeroline=False,
+            tickvals=[0, 15, 30, 45, 60, 75, 90],
+            ticktext=["Now","15d","30d","45d","60d","75d","90d"],
+        ),
+        yaxis=dict(
+            title="Health (%)",
+            range=[-2, 102],
+            gridcolor="rgba(255,255,255,0.05)",
+            tickcolor="rgba(255,255,255,0.2)",
+            zeroline=False,
+            ticksuffix="%",
+        ),
+        legend=dict(
+            bgcolor="rgba(20,20,35,0.85)",
+            bordercolor="rgba(255,255,255,0.15)",
+            borderwidth=1,
+            orientation="h",
+            yanchor="bottom", y=1.03,
+            xanchor="left",  x=0,
+            font=dict(size=11),
+        ),
+        hovermode="x unified",
+        height=420,
+        margin=dict(l=10, r=30, t=90, b=40),
     )
-    
+
     return fig
+
+
+def create_gauges_row(health_score, batt_health, brake_health, tire_health):
+    """Render all 4 KPI gauges as one single figure — immune to zoom misalignment."""
+    from plotly.subplots import make_subplots
+
+    values = [health_score, batt_health, brake_health, tire_health]
+    titles = ["Overall Health", "Battery Health", "Brake Health", "Tire Health"]
+    colors = ['#00C853' if v > 70 else '#FFB366' if v > 40 else '#FF4444' for v in values]
+
+    fig = make_subplots(
+        rows=1, cols=4,
+        specs=[[{"type": "indicator"}] * 4],
+        horizontal_spacing=0.04,
+    )
+
+    for i, (val, title, color) in enumerate(zip(values, titles, colors), start=1):
+        fig.add_trace(
+            go.Indicator(
+                mode="gauge+number",
+                value=round(val, 1),
+                number={"font": {"size": 28, "color": "white"}, "suffix": "%"},
+                title={"text": title, "font": {"size": 13, "color": "#AAAAAA"}},
+                gauge={
+                    "axis": {
+                        "range": [0, 100],
+                        "tickwidth": 1,
+                        "tickcolor": "rgba(255,255,255,0.3)",
+                        "tickfont": {"size": 9, "color": "rgba(255,255,255,0.4)"},
+                        "nticks": 5,
+                    },
+                    "bar": {"color": color, "thickness": 0.7},
+                    "bgcolor": "rgba(0,0,0,0)",
+                    "borderwidth": 1,
+                    "bordercolor": "rgba(100,100,100,0.4)",
+                    "steps": [
+                        {"range": [0,  40], "color": "rgba(255,68,68,0.18)"},
+                        {"range": [40, 70], "color": "rgba(255,179,102,0.18)"},
+                        {"range": [70,100], "color": "rgba(0,200,83,0.18)"},
+                    ],
+                    "threshold": {
+                        "line": {"color": color, "width": 3},
+                        "thickness": 0.85,
+                        "value": round(val, 1),
+                    },
+                },
+            ),
+            row=1, col=i,
+        )
+
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font={"color": "white"},
+        height=210,
+        margin=dict(l=20, r=20, t=30, b=10),
+    )
+    return fig
+
+
+def create_component_forecast(component_key, predictions, vehicle_data, days=90, auto_y=True):
+    """Single-component 90-day forecast with in-chart range and Y-scale controls."""
+
+    def _h2r(h, a):
+        r, g, b = int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)
+        return f"rgba({r},{g},{b},{a})"
+
+    x = np.arange(0, 91)   # full 90-day index array (distinct from the `days` parameter)
+    avg_spd  = float(vehicle_data.get("Average_Speed", vehicle_data.get("Driving_Speed", 60)))
+    daily_km = float(np.clip(avg_spd * 1.5, 25, 200))
+    harsh    = float(vehicle_data.get("Harsh_Braking_Events", 50))
+    style    = float(vehicle_data.get("Driving_Style", 1))
+    intensity = (0.5 + style * 0.35) * (0.7 + harsh / 200.0)
+
+    # ── Component specs ────────────────────────────────────────────────────────
+    specs = {
+        "tire_tread": dict(
+            label="Tire Tread", color="#00E5FF", unit="mm", fmt=".2f",
+            lo=1.6, hi=8.2, warn=3.0, crit=2.0,
+            warn_label="Replace Soon (3 mm)", crit_label="Legal Min (1.6 mm)",
+        ),
+        "brake_thickness": dict(
+            label="Brake Pad", color="#FF6D00", unit="mm", fmt=".2f",
+            lo=3.0, hi=12.0, warn=4.0, crit=3.0,
+            warn_label="Replace Soon (4 mm)", crit_label="Unsafe (3 mm)",
+        ),
+        "battery_soh": dict(
+            label="Battery SoH", color="#69FF47", unit="%", fmt=".2f",
+            lo=60.0, hi=100.0, warn=80.0, crit=70.0,
+            warn_label="Degraded (80%)", crit_label="Critical (70%)",
+        ),
+        "oil_life": dict(
+            label="Oil Life", color="#FFD600", unit="km", fmt=".0f",
+            lo=0.0, hi=10500.0, warn=1500.0, crit=500.0,
+            warn_label="Service Soon (1 500 km)", crit_label="Overdue (500 km)",
+        ),
+        "air_filter_life": dict(
+            label="Air Filter", color="#E040FB", unit="km", fmt=".0f",
+            lo=0.0, hi=25000.0, warn=2000.0, crit=500.0,
+            warn_label="Replace Soon (2 000 km)", crit_label="Clogged (500 km)",
+        ),
+        "coolant_life": dict(
+            label="Coolant", color="#40C4FF", unit="km", fmt=".0f",
+            lo=0.0, hi=70000.0, warn=5000.0, crit=1000.0,
+            warn_label="Change Soon (5 000 km)", crit_label="Critical (1 000 km)",
+        ),
+        "transmission_life": dict(
+            label="Transmission Fluid", color="#FF80AB", unit="km", fmt=".0f",
+            lo=0.0, hi=120000.0, warn=10000.0, crit=2000.0,
+            warn_label="Change Soon (10 000 km)", crit_label="Critical (2 000 km)",
+        ),
+    }
+
+    if component_key not in specs or component_key not in predictions:
+        return go.Figure()
+
+    s   = specs[component_key]
+    cur = float(predictions[component_key])
+    lo, hi, warn, crit = s["lo"], s["hi"], s["warn"], s["crit"]
+
+    # ── Degradation projection ─────────────────────────────────────────────────
+    if component_key == "tire_tread":
+        rate = 0.000130 * intensity
+        raw  = np.maximum(lo, cur - rate * daily_km * x)
+
+    elif component_key == "brake_thickness":
+        mtn  = float(vehicle_data.get("Mountain_Driving_Percent", 10))
+        rate = 0.000065 * intensity * (1 + mtn / 120.0)
+        raw  = np.maximum(lo, cur - rate * daily_km * x)
+
+    elif component_key == "battery_soh":
+        fc   = float(vehicle_data.get("Fast_Charge_Percentage", 30))
+        dod  = float(vehicle_data.get("Average_Depth_of_Discharge", 60))
+        rate = 0.011 + fc * 0.00025 + dod * 0.00010
+        raw  = np.maximum(lo, cur - rate * x)
+
+    elif component_key == "oil_life":
+        raw = np.maximum(lo, cur - daily_km * x)
+
+    elif component_key == "air_filter_life":
+        aqi  = float(vehicle_data.get("Air_Quality_Index", 60))
+        rate = daily_km * (1.0 + max(0, aqi - 50) / 180.0)
+        raw  = np.maximum(lo, cur - rate * x)
+
+    elif component_key == "coolant_life":
+        hl   = float(vehicle_data.get("Heavy_Load_Percentage", 15))
+        rate = daily_km * (1.0 + hl / 180.0)
+        raw  = np.maximum(lo, cur - rate * x)
+
+    elif component_key == "transmission_life":
+        raw = np.maximum(lo, cur - daily_km * x)
+
+    else:
+        raw = np.maximum(lo, cur - (daily_km * 0.001) * x)
+
+    # ── Y values: always plot in raw units (mm / % / km) ──────────────────────
+    color = s["color"]
+    fig   = go.Figure()
+
+    # Background health zones (in raw units)
+    fig.add_hrect(y0=warn, y1=hi * 1.05, fillcolor="rgba(0,200,83,0.06)",    line_width=0, layer="below")
+    fig.add_hrect(y0=crit, y1=warn,       fillcolor="rgba(255,179,102,0.08)", line_width=0, layer="below")
+    fig.add_hrect(y0=lo,   y1=crit,       fillcolor="rgba(255,68,68,0.10)",   line_width=0, layer="below")
+
+    # Warn / crit threshold lines
+    fig.add_hline(y=warn, line=dict(color="rgba(255,179,102,0.6)", width=1.5, dash="dash"))
+    fig.add_hline(y=crit, line=dict(color="rgba(255,68,68,0.6)",   width=1.5, dash="dash"))
+
+    # Threshold labels
+    fig.add_annotation(x=91, y=warn, text=s["warn_label"], xanchor="right",
+                       font=dict(size=10, color="rgba(255,179,102,0.8)"),
+                       showarrow=False, xref="x", yref="y")
+    fig.add_annotation(x=91, y=crit, text=s["crit_label"], xanchor="right",
+                       font=dict(size=10, color="rgba(255,68,68,0.8)"),
+                       showarrow=False, xref="x", yref="y")
+
+    # Gradient fill under line
+    fig.add_trace(go.Scatter(
+        x=np.concatenate([x, x[::-1]]),
+        y=np.concatenate([raw, np.full(len(x), lo)]),
+        fill="toself", fillcolor=_h2r(color, 0.08),
+        line=dict(width=0), showlegend=False, hoverinfo="skip",
+    ))
+
+    # Main degradation line
+    fig.add_trace(go.Scatter(
+        x=x, y=raw,
+        mode="lines",
+        name=s["label"],
+        line=dict(color=color, width=3, shape="spline", smoothing=0.4),
+        hovertemplate=f"Day %{{x}}<br><b>{s['label']}: %{{y:{s['fmt']}}} {s['unit']}</b><extra></extra>",
+    ))
+
+    # Current value dot
+    fig.add_trace(go.Scatter(
+        x=[0], y=[cur],
+        mode="markers+text",
+        marker=dict(color=color, size=12, symbol="circle",
+                    line=dict(color="white", width=2)),
+        text=[f"  Now: {cur:{s['fmt']}} {s['unit']}"],
+        textposition="middle right",
+        textfont=dict(color="white", size=11),
+        showlegend=False, hoverinfo="skip",
+    ))
+
+    # Service-due crossing marker
+    cross_warn = next((i for i in range(len(raw)-1) if raw[i] >= warn > raw[i+1]), None)
+    cross_crit = next((i for i in range(len(raw)-1) if raw[i] >= crit > raw[i+1]), None)
+
+    for cross_day, cross_y, cross_color, cross_label in [
+        (cross_warn, warn, "rgba(255,179,102,0.9)", "⚠ Service Due"),
+        (cross_crit, crit, "rgba(255,68,68,0.9)",   "🚨 Critical"),
+    ]:
+        if cross_day is not None and cross_day <= 89:
+            fig.add_vline(x=cross_day,
+                          line=dict(color=cross_color, width=1.5, dash="dot"))
+            fig.add_annotation(
+                x=cross_day, y=cross_y,
+                text=f"<b>{cross_label}</b><br>Day {cross_day}",
+                showarrow=True, arrowhead=2, arrowsize=0.9,
+                arrowcolor=cross_color,
+                font=dict(color=cross_color, size=11),
+                bgcolor="rgba(10,10,20,0.85)",
+                bordercolor=cross_color, borderwidth=1, borderpad=5,
+                ax=40, ay=-45,
+            )
+
+    # Today marker
+    fig.add_vline(x=0, line=dict(color="rgba(255,255,255,0.45)", width=2))
+
+    # ── Y range ───────────────────────────────────────────────────────────────
+    y_pad     = (max(raw) - min(raw)) * 0.12 + (hi - lo) * 0.03
+    y_lo_auto = max(lo - y_pad * 0.5,  lo - (hi - lo) * 0.05)
+    y_hi_auto = min(hi * 1.04,          max(raw) + y_pad)
+    y_range   = [y_lo_auto, y_hi_auto] if auto_y else [lo - (hi - lo) * 0.02, hi * 1.04]
+
+    # ── X tick labels clipped to requested day range ──────────────────────────
+    all_ticks = [0, 15, 30, 45, 60, 75, 90]
+    all_labels = ["Now", "15d", "30d", "45d", "60d", "75d", "90d"]
+    tick_vals  = [t for t in all_ticks  if t <= days]
+    tick_text  = [l for t, l in zip(all_ticks, all_labels) if t <= days]
+
+    fig.update_layout(
+        paper_bgcolor="rgba(12,12,22,0.95)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="white", family="sans-serif"),
+        height=400,
+        margin=dict(l=15, r=120, t=30, b=50),
+        showlegend=False,
+        hovermode="x unified",
+        xaxis=dict(
+            title="Days from Today",
+            range=[-1, days + 1],
+            gridcolor="rgba(255,255,255,0.05)",
+            tickcolor="rgba(255,255,255,0.2)",
+            zeroline=False,
+            tickvals=tick_vals,
+            ticktext=tick_text,
+        ),
+        yaxis=dict(
+            title=f"{s['label']} ({s['unit']})",
+            range=y_range,
+            gridcolor="rgba(255,255,255,0.05)",
+            tickcolor="rgba(255,255,255,0.2)",
+            zeroline=False,
+        ),
+    )
+
+    return fig
+
 
 def generate_recommendations(predictions, vehicle_type):
     """Generate maintenance recommendations"""
@@ -602,6 +1050,116 @@ def main():
         st.markdown("---")
         st.markdown("**About**")
         st.info("BeyondTech uses machine learning to predict maintenance needs before failures occur.")
+
+        # Live Simulation Panel — only visible when a vehicle detail view is active
+        if st.session_state.get("selected_vehicle"):
+            _vin = st.session_state.selected_vehicle
+            _base = vehicles_data[_vin]
+
+            st.markdown("---")
+            st.markdown("### Simulation Controls")
+            st.caption("Pick a scenario or tune the sliders below.")
+
+            # ── Scenario Preset Buttons ──
+            st.markdown("**Quick Scenarios**")
+            _SIM_KEYS = ["sim_SoC","sim_Ambient_Temperature","sim_Driving_Speed",
+                         "sim_Total_Distance","sim_Harsh_Braking_Events",
+                         "sim_Driving_Style","sim_Fast_Charge_Percentage","sim_Air_Quality_Index"]
+
+            def _apply_preset(values: dict):
+                for k in _SIM_KEYS:
+                    st.session_state.pop(k, None)
+                for k, v in values.items():
+                    st.session_state[k] = v
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("❄️ Winter", key="preset_winter", use_container_width=True):
+                    _apply_preset({
+                        "sim_SoC": 45, "sim_Ambient_Temperature": -8,
+                        "sim_Driving_Speed": 52, "sim_Harsh_Braking_Events": 35,
+                        "sim_Driving_Style": 0, "sim_Fast_Charge_Percentage": 25,
+                        "sim_Air_Quality_Index": 55,
+                    })
+                    st.rerun()
+                if st.button("🛣️ Highway", key="preset_highway", use_container_width=True):
+                    _apply_preset({
+                        "sim_SoC": 82, "sim_Ambient_Temperature": 22,
+                        "sim_Driving_Speed": 118, "sim_Harsh_Braking_Events": 12,
+                        "sim_Driving_Style": 0, "sim_Fast_Charge_Percentage": 20,
+                        "sim_Air_Quality_Index": 40,
+                    })
+                    st.rerun()
+            with col_b:
+                if st.button("🏎️ Aggressive", key="preset_aggressive", use_container_width=True):
+                    _apply_preset({
+                        "sim_SoC": 35, "sim_Ambient_Temperature": 28,
+                        "sim_Driving_Speed": 115, "sim_Harsh_Braking_Events": 175,
+                        "sim_Driving_Style": 2, "sim_Fast_Charge_Percentage": 65,
+                        "sim_Air_Quality_Index": 88,
+                    })
+                    st.rerun()
+                if st.button("💀 Neglected", key="preset_neglected", use_container_width=True):
+                    _apply_preset({
+                        "sim_SoC": 28, "sim_Ambient_Temperature": 32,
+                        "sim_Driving_Speed": 95, "sim_Total_Distance": 148000,
+                        "sim_Harsh_Braking_Events": 165, "sim_Driving_Style": 2,
+                        "sim_Fast_Charge_Percentage": 80, "sim_Air_Quality_Index": 130,
+                    })
+                    st.rerun()
+
+            st.markdown("---")
+            st.caption("Or adjust manually:")
+
+            if st.button("↺ Reset to Baseline", key="sim_reset", use_container_width=True):
+                for _k in [
+                    "sim_SoC", "sim_Ambient_Temperature", "sim_Driving_Speed",
+                    "sim_Total_Distance", "sim_Harsh_Braking_Events",
+                    "sim_Driving_Style", "sim_Fast_Charge_Percentage",
+                    "sim_Air_Quality_Index",
+                ]:
+                    st.session_state.pop(_k, None)
+
+            st.slider("Battery SoC %", 20, 100,
+                      value=st.session_state.get("sim_SoC", int(_base["SoC"])),
+                      key="sim_SoC")
+
+            st.slider("Ambient Temperature °C", -10, 45,
+                      value=st.session_state.get("sim_Ambient_Temperature",
+                                                  int(_base["Ambient_Temperature"])),
+                      key="sim_Ambient_Temperature")
+
+            st.slider("Driving Speed km/h", 30, 130,
+                      value=st.session_state.get("sim_Driving_Speed",
+                                                  int(_base["Driving_Speed"])),
+                      key="sim_Driving_Speed")
+
+            st.slider("Total Distance km", 0, 150000,
+                      value=st.session_state.get("sim_Total_Distance",
+                                                  int(_base["Total_Distance"])),
+                      step=500, key="sim_Total_Distance")
+
+            st.slider("Harsh Braking Events", 0, 200,
+                      value=st.session_state.get("sim_Harsh_Braking_Events",
+                                                  int(_base["Harsh_Braking_Events"])),
+                      key="sim_Harsh_Braking_Events")
+
+            st.selectbox("Driving Style",
+                         options=[0, 1, 2],
+                         format_func=lambda x: {0: "Conservative", 1: "Normal", 2: "Aggressive"}[x],
+                         index=st.session_state.get("sim_Driving_Style",
+                                                     int(_base["Driving_Style"])),
+                         key="sim_Driving_Style")
+
+            st.slider("Fast Charge %", 0, 100,
+                      value=st.session_state.get("sim_Fast_Charge_Percentage",
+                                                  int(_base["Fast_Charge_Percentage"])),
+                      key="sim_Fast_Charge_Percentage")
+
+            st.slider("Air Quality Index", 20, 150,
+                      value=st.session_state.get("sim_Air_Quality_Index",
+                                                  int(_base["Air_Quality_Index"])),
+                      key="sim_Air_Quality_Index")
     
     # Load models
     models = load_models()
@@ -653,40 +1211,208 @@ def main():
     else:
         # Vehicle detail view
         vehicle = st.session_state.selected_vehicle
+
+        # Clear simulation state when switching to a different vehicle
+        if st.session_state.get("_last_sim_vehicle") != vehicle:
+            for _k in ["sim_SoC", "sim_Ambient_Temperature", "sim_Driving_Speed",
+                       "sim_Total_Distance", "sim_Harsh_Braking_Events",
+                       "sim_Driving_Style", "sim_Fast_Charge_Percentage",
+                       "sim_Air_Quality_Index"]:
+                st.session_state.pop(_k, None)
+            st.session_state["_last_sim_vehicle"] = vehicle
+
         vehicle_data = vehicles_data[vehicle]
-        
+
+        # Build live_data: baseline from vehicle_data, overridden by simulator sliders
+        _sim_keys = {
+            "SoC":                    "sim_SoC",
+            "Ambient_Temperature":    "sim_Ambient_Temperature",
+            "Driving_Speed":          "sim_Driving_Speed",
+            "Average_Speed":          "sim_Driving_Speed",   # same slider drives both features
+            "Total_Distance":         "sim_Total_Distance",
+            "Harsh_Braking_Events":   "sim_Harsh_Braking_Events",
+            "Driving_Style":          "sim_Driving_Style",
+            "Fast_Charge_Percentage": "sim_Fast_Charge_Percentage",
+            "Air_Quality_Index":      "sim_Air_Quality_Index",
+        }
+        _overrides = {
+            dk: st.session_state[sk]
+            for dk, sk in _sim_keys.items()
+            if sk in st.session_state
+        }
+        live_data = {**vehicle_data, **_overrides}
+
+        # ── Total Distance: derive all "since last service" fields + age-based fields ──
+        if "Total_Distance" in _overrides:
+            sim_dist = _overrides["Total_Distance"]
+            KM_PER_MONTH = 1500  # assumed average driving rate
+
+            # Service interval derivations (last service point is fixed history)
+            _last_brake  = vehicle_data["Total_Distance"] - vehicle_data["Distance_Since_Last_Replacement"]
+            live_data["Distance_Since_Last_Replacement"] = max(0, sim_dist - _last_brake)
+
+            _last_filter = vehicle_data["Total_Distance"] - vehicle_data["Distance_Since_Filter_Change"]
+            live_data["Distance_Since_Filter_Change"] = max(0, sim_dist - _last_filter)
+
+            if vehicle_data.get("Distance_Since_Last_Change", 0) > 0:  # oil — ICE/Hybrid only
+                _last_oil = vehicle_data["Total_Distance"] - vehicle_data["Distance_Since_Last_Change"]
+                live_data["Distance_Since_Last_Change"] = max(0, sim_dist - _last_oil)
+
+            if vehicle_data.get("Distance_Since_Fluid_Change", 0) > 0:  # transmission fluid
+                _last_trans = vehicle_data["Total_Distance"] - vehicle_data["Distance_Since_Fluid_Change"]
+                live_data["Distance_Since_Fluid_Change"] = max(0, sim_dist - _last_trans)
+
+            # Age-based features scale with time-on-road
+            months_delta = (sim_dist - vehicle_data["Total_Distance"]) / KM_PER_MONTH
+            live_data["Tire_Age_Months"]    = max(1, int(vehicle_data["Tire_Age_Months"]    + months_delta))
+            live_data["Battery_Age_Months"] = max(1, int(vehicle_data["Battery_Age_Months"] + months_delta))
+            live_data["Coolant_Age_Months"] = max(1, int(vehicle_data["Coolant_Age_Months"] + months_delta))
+
+            # Charge cycles accumulate with distance (avg ~300 km per full cycle for EVs)
+            if vehicle_data.get("Total_Charge_Cycles", 0) > 0:
+                live_data["Total_Charge_Cycles"] = max(1, int(sim_dist / 300))
+
+        # ── Ambient Temperature: battery and engine temps track ambient ──
+        if "Ambient_Temperature" in _overrides:
+            sim_temp = _overrides["Ambient_Temperature"]
+            # Battery thermal management keeps pack warmer in cold, cooler in heat
+            if sim_temp < 0:
+                batt_offset = 15   # heating system active
+            elif sim_temp > 25:
+                batt_offset = 5    # active cooling
+            else:
+                batt_offset = 8    # mild conditions
+            live_data["Battery_Temperature"]     = sim_temp + batt_offset
+            live_data["Battery_Temperature_Avg"] = sim_temp + batt_offset - 2
+            # Wider temperature extremes = larger seasonal swing seen by tires
+            live_data["Temperature_Range"] = max(10, int(abs(sim_temp - 20) * 1.5 + 10))
+            # Engine temperature (ICE/Hybrid only — thermostat keeps it ~90°C but cold starts shift avg)
+            if vehicle_data.get("Engine_Temperature", 0) > 0:
+                live_data["Engine_Temperature"]     = max(60, 90 + (sim_temp - 15) * 0.2)
+                live_data["Engine_Temperature_Avg"] = max(60, 88 + (sim_temp - 15) * 0.2)
+                live_data["Engine_Temperature_Max"] = max(70, 98 + (sim_temp - 15) * 0.15)
+
+        # ── Driving Speed: affects brake temps, high-speed %, city driving %, idle time ──
+        if "Driving_Speed" in _overrides:
+            sim_speed = _overrides["Driving_Speed"]
+            base_speed = vehicle_data["Driving_Speed"]
+            speed_delta = sim_speed - base_speed
+
+            # High-speed % rises above 80 km/h
+            live_data["High_Speed_Percentage"] = int(np.clip((sim_speed - 60) * 1.2, 0, 95))
+            # City/urban driving is inversely proportional to speed
+            live_data["City_Driving_Percentage"]  = int(np.clip(90 - (sim_speed - 30) * 0.75, 10, 90))
+            live_data["Urban_Driving_Percentage"] = int(np.clip(95 - (sim_speed - 30) * 0.70, 10, 90))
+            # Idle time is higher at lower speeds (city stop-and-go)
+            live_data["Idle_Time_Percentage"] = int(np.clip(35 - (sim_speed - 30) * 0.35, 5, 35))
+            # Brake temperature rises with higher-speed stops
+            live_data["Brake_Temperature_Avg"] = max(
+                60, vehicle_data["Brake_Temperature_Avg"] + speed_delta * 1.5
+            )
+            # Gear shifts increase at lower speeds (ICE/Hybrid with manual-style shifting)
+            if vehicle_data.get("Gear_Shifts_Per_100km", 0) > 0:
+                live_data["Gear_Shifts_Per_100km"] = int(
+                    np.clip(vehicle_data["Gear_Shifts_Per_100km"] * (75 / max(sim_speed, 35)), 50, 400)
+                )
+
+        # ── Harsh Braking: brake events per 100 km and brake temperature both scale up ──
+        if "Harsh_Braking_Events" in _overrides:
+            sim_harsh = _overrides["Harsh_Braking_Events"]
+            base_harsh = max(vehicle_data["Harsh_Braking_Events"], 1)
+            ratio = sim_harsh / base_harsh
+            live_data["Brake_Events_Per_100km"] = int(
+                np.clip(vehicle_data["Brake_Events_Per_100km"] * ratio, 10, 350)
+            )
+            # Cumulative: adds on top of any speed-derived brake temp already set
+            harsh_temp_delta = (sim_harsh - base_harsh) * 0.7
+            live_data["Brake_Temperature_Avg"] = max(
+                60, live_data["Brake_Temperature_Avg"] + harsh_temp_delta
+            )
+
+        # ── Driving Style: affects acceleration events, depth-of-discharge, high-speed % ──
+        if "Driving_Style" in _overrides:
+            sim_style = _overrides["Driving_Style"]
+            accel_mult  = {0: 0.50, 1: 1.0, 2: 2.20}[sim_style]
+            live_data["Harsh_Acceleration_Events"] = int(
+                np.clip(vehicle_data["Harsh_Acceleration_Events"] * accel_mult, 3, 200)
+            )
+            # Aggressive drivers discharge battery deeper before charging
+            discharge_shift = {0: -15, 1: 0, 2: +20}[sim_style]
+            live_data["Average_Depth_of_Discharge"] = int(
+                np.clip(vehicle_data["Average_Depth_of_Discharge"] + discharge_shift, 20, 95)
+            )
+            # Don't overwrite High_Speed_Percentage if Driving_Speed slider already set it
+            if "Driving_Speed" not in _overrides:
+                hs_shift = {0: -12, 1: 0, 2: +22}[sim_style]
+                live_data["High_Speed_Percentage"] = int(
+                    np.clip(vehicle_data["High_Speed_Percentage"] + hs_shift, 0, 90)
+                )
+
+        # ── Fast Charge %: battery temperature and temperature range increase ──
+        if "Fast_Charge_Percentage" in _overrides:
+            sim_fc   = _overrides["Fast_Charge_Percentage"]
+            base_fc  = vehicle_data["Fast_Charge_Percentage"]
+            fc_delta = sim_fc - base_fc
+            # Fast charging generates heat; adds on top of any ambient-derived temp
+            current_batt_avg = live_data.get("Battery_Temperature_Avg",
+                                             vehicle_data["Battery_Temperature_Avg"])
+            live_data["Battery_Temperature_Avg"] = round(
+                np.clip(current_batt_avg + fc_delta * 0.15, 5, 50), 1
+            )
+            # Wider thermal swings from repeated fast charge/cool cycles
+            live_data["Battery_Temperature_Range"] = round(
+                np.clip(vehicle_data["Battery_Temperature_Range"] + fc_delta * 0.08, 5, 40), 1
+            )
+
+        # ── Air Quality Index: dusty road % and engine air flow degrade together ──
+        if "Air_Quality_Index" in _overrides:
+            sim_aqi = _overrides["Air_Quality_Index"]
+            # Dusty road % correlates with particulate-heavy air
+            if sim_aqi < 50:
+                live_data["Dusty_Road_Percentage"] = max(2,  int(sim_aqi * 0.10))
+            elif sim_aqi < 100:
+                live_data["Dusty_Road_Percentage"] = int(5 + (sim_aqi - 50) * 0.30)
+            else:
+                live_data["Dusty_Road_Percentage"] = int(20 + (sim_aqi - 100) * 0.40)
+            # Engine air flow falls as filter clogs faster in dirty air
+            live_data["Engine_Air_Flow"] = int(np.clip(100 - (sim_aqi - 35) * 0.22, 50, 100))
+
+        # ── SoC: battery voltage tracks state-of-charge via linear cell chemistry model ──
+        if "SoC" in _overrides:
+            sim_soc = _overrides["SoC"]
+            # Lithium-ion open-circuit voltage: ~350V at 20% SoC, ~420V at 100% SoC
+            live_data["Battery_Voltage"] = round(350 + (sim_soc / 100) * 70, 1)
+
+        _sim_active = any(live_data[dk] != vehicle_data[dk] for dk in live_data if dk in vehicle_data)
+
         # Back button
-        col1, col2 = st.columns([1, 5])
-        with col1:
-            if st.button("← Back to Fleet"):
-                st.session_state.selected_vehicle = None
-                st.rerun()
+        if st.button("← Back to Fleet"):
+            st.session_state.selected_vehicle = None
+            st.rerun()
         
         st.title(f"🚗 {vehicle_data['name']}")
         st.markdown(f"**VIN:** {vehicle} | **Type:** {vehicle_data['type']}")
-        
+        if _sim_active:
+            st.markdown(
+                '<span style="background:#FF6F00; color:white; padding:4px 14px; '
+                'border-radius:20px; font-size:13px; font-weight:700; letter-spacing:1px;">'
+                'LIVE SIMULATION</span>',
+                unsafe_allow_html=True
+            )
+
         # Make predictions
-        predictions = make_predictions(models, vehicle_data)
+        predictions = make_predictions(models, live_data)
         health_score = calculate_health_score(predictions, vehicle_data['type'])
         
-        # Health metrics
+        # Health metrics — single figure so zoom never breaks alignment
         st.markdown("---")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.plotly_chart(create_gauge_chart(health_score, "Health Score"), use_container_width=True)
-        
-        with col2:
-            batt_health = predictions.get('battery_soh', vehicle_data.get('SoH', 90))
-            st.plotly_chart(create_gauge_chart(batt_health, "Battery Health"), use_container_width=True)
-        
-        with col3:
-            brake_health = min((predictions.get('brake_thickness', 10) / 12) * 100, 100)
-            st.plotly_chart(create_gauge_chart(brake_health, "Brake Health"), use_container_width=True)
-        
-        with col4:
-            tire_health = min((predictions.get('tire_tread', 6) / 8) * 100, 100)
-            st.plotly_chart(create_gauge_chart(tire_health, "Tire Health"), use_container_width=True)
+        batt_health  = predictions.get('battery_soh', vehicle_data.get('SoH', 90))
+        brake_health = min((predictions.get('brake_thickness', 10) / 12) * 100, 100)
+        tire_health  = min((predictions.get('tire_tread', 6) / 8) * 100, 100)
+        st.plotly_chart(
+            create_gauges_row(health_score, batt_health, brake_health, tire_health),
+            use_container_width=True,
+        )
         
         # Key predictions
         st.markdown("---")
@@ -737,9 +1463,129 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
         
-        # Trends
+        # Trends — tabbed per component
         st.markdown("---")
-        st.plotly_chart(create_trend_chart(vehicle_data['name']), use_container_width=True)
+        st.markdown("### 📈 90-Day Component Health Forecast")
+
+        _tab_defs = [
+            ("🛞 Tires",       "tire_tread"),
+            ("🔧 Brakes",      "brake_thickness"),
+            ("🔋 Battery",     "battery_soh"),
+            ("💨 Air Filter",  "air_filter_life"),
+            ("💧 Coolant",     "coolant_life"),
+            ("🛢️ Oil",         "oil_life"),
+            ("⚙️ Transmission","transmission_life"),
+        ]
+        _available = [(label, key) for label, key in _tab_defs if key in predictions]
+
+        # Critical thresholds — used to decide alert-vs-chart for each component
+        _crit_specs = {
+            "tire_tread":        dict(crit=2.0,    warn=3.0,    unit="mm", fmt=".1f", label="Tire Tread",         action="Replace tyres immediately"),
+            "brake_thickness":   dict(crit=3.0,    warn=4.0,    unit="mm", fmt=".1f", label="Brake Pad",          action="Replace brake pads immediately"),
+            "battery_soh":       dict(crit=70.0,   warn=80.0,   unit="%",  fmt=".1f", label="Battery SoH",        action="Schedule battery assessment"),
+            "oil_life":          dict(crit=500.0,  warn=1500.0, unit="km", fmt=".0f", label="Oil Life",           action="Change oil immediately"),
+            "air_filter_life":   dict(crit=500.0,  warn=2000.0, unit="km", fmt=".0f", label="Air Filter",         action="Replace air filter immediately"),
+            "coolant_life":      dict(crit=1000.0, warn=5000.0, unit="km", fmt=".0f", label="Coolant",            action="Flush and replace coolant"),
+            "transmission_life": dict(crit=2000.0, warn=10000.0,unit="km", fmt=".0f", label="Transmission Fluid", action="Change transmission fluid immediately"),
+        }
+
+        if _available:
+            _tabs = st.tabs([label for label, _ in _available])
+            for _tab, (_, _key) in zip(_tabs, _available):
+                with _tab:
+                    _cur_val = float(predictions.get(_key, 9999))
+                    _cs      = _crit_specs.get(_key, {})
+                    _is_crit = _cs and _cur_val <= _cs["crit"]
+                    _is_warn = _cs and not _is_crit and _cur_val <= _cs["warn"]
+
+                    if _is_crit:
+                        # ── Already past critical threshold — show alert card ──
+                        st.markdown(f"""
+                        <div style="
+                            background: linear-gradient(135deg, rgba(180,0,0,0.25) 0%, rgba(80,0,0,0.40) 100%);
+                            border: 2px solid #FF4444;
+                            border-radius: 16px;
+                            padding: 48px 32px;
+                            text-align: center;
+                            margin: 16px 0;
+                        ">
+                            <div style="font-size: 60px; margin-bottom: 12px;">🚨</div>
+                            <h2 style="color:#FF4444; margin:0 0 8px 0; font-size:26px; letter-spacing:1px;">
+                                IMMEDIATE SERVICE REQUIRED
+                            </h2>
+                            <p style="color:#ffaaaa; font-size:15px; margin:0 0 32px 0;">
+                                <b>{_cs['label']}</b> has already crossed the critical safety threshold
+                            </p>
+                            <div style="display:flex; justify-content:center; gap:32px; flex-wrap:wrap; margin-bottom:32px;">
+                                <div style="background:rgba(0,0,0,0.35); border-radius:12px; padding:18px 28px; min-width:140px;">
+                                    <p style="color:#888; margin:0 0 6px 0; font-size:11px; letter-spacing:1px;">CURRENT VALUE</p>
+                                    <p style="color:#FF4444; margin:0; font-size:34px; font-weight:700; line-height:1;">
+                                        {_cur_val:{_cs['fmt']}} {_cs['unit']}
+                                    </p>
+                                </div>
+                                <div style="background:rgba(0,0,0,0.35); border-radius:12px; padding:18px 28px; min-width:140px;">
+                                    <p style="color:#888; margin:0 0 6px 0; font-size:11px; letter-spacing:1px;">CRITICAL THRESHOLD</p>
+                                    <p style="color:#FFB366; margin:0; font-size:34px; font-weight:700; line-height:1;">
+                                        {_cs['crit']:{_cs['fmt']}} {_cs['unit']}
+                                    </p>
+                                </div>
+                            </div>
+                            <div style="background:rgba(255,68,68,0.15); border:1px solid rgba(255,68,68,0.4);
+                                        border-radius:10px; padding:14px 24px; display:inline-block;">
+                                <p style="color:#FF6666; margin:0; font-size:14px; font-weight:600;">
+                                    → {_cs['action']}
+                                </p>
+                            </div>
+                            <p style="color:#555; margin:28px 0 0 0; font-size:12px;">
+                                Degradation forecast is not available — component already requires immediate attention.
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    elif _is_warn:
+                        # ── Past warning but not yet critical — show amber banner + chart ──
+                        st.markdown(f"""
+                        <div style="
+                            background: rgba(255,179,102,0.12);
+                            border: 1px solid rgba(255,179,102,0.5);
+                            border-radius: 10px;
+                            padding: 14px 20px;
+                            margin-bottom: 12px;
+                            display: flex;
+                            align-items: center;
+                            gap: 14px;
+                        ">
+                            <span style="font-size:24px;">⚠️</span>
+                            <div>
+                                <b style="color:#FFB366;">{_cs['label']} is in the warning zone</b>
+                                <span style="color:#ccc; font-size:13px; margin-left:12px;">
+                                    Current: {_cur_val:{_cs['fmt']}} {_cs['unit']} &nbsp;|&nbsp;
+                                    Warning threshold: {_cs['warn']:{_cs['fmt']}} {_cs['unit']}
+                                </span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        _ctl1, _ctl2, _ = st.columns([3, 3, 8])
+                        with _ctl1:
+                            _xdays = st.radio("Time Range", [30, 60, 90], index=2, horizontal=True, key=f"xrange_{_key}")
+                        with _ctl2:
+                            _yscale = st.radio("Y Scale", ["Auto", "Full"], index=0, horizontal=True, key=f"yscale_{_key}")
+                        st.plotly_chart(
+                            create_component_forecast(_key, predictions, live_data, days=_xdays, auto_y=(_yscale == "Auto")),
+                            use_container_width=True,
+                        )
+
+                    else:
+                        # ── Healthy — show chart as normal ──
+                        _ctl1, _ctl2, _ = st.columns([3, 3, 8])
+                        with _ctl1:
+                            _xdays = st.radio("Time Range", [30, 60, 90], index=2, horizontal=True, key=f"xrange_{_key}")
+                        with _ctl2:
+                            _yscale = st.radio("Y Scale", ["Auto", "Full"], index=0, horizontal=True, key=f"yscale_{_key}")
+                        st.plotly_chart(
+                            create_component_forecast(_key, predictions, live_data, days=_xdays, auto_y=(_yscale == "Auto")),
+                            use_container_width=True,
+                        )
         
         # Recommendations
         st.markdown("---")

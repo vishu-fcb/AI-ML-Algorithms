@@ -30,12 +30,94 @@ State-of-the-art predictive maintenance system achieving 97.7% average accuracy,
 | **Battery Degradation** | 0.9248 (92.5%) | **NASA Data** | Good |
 
 ### Dashboard Features
-- 🎯 Real-time health monitoring with gauge displays
-- 📊 Multi-vehicle fleet management (6 demo vehicles)
-- 💰 Cost projections (30/90/365 day estimates)
+- 🎯 Unified real-time health gauges (zoom-stable, all 4 KPIs in one figure)
+- 🚗 Multi-vehicle fleet management (6 demo vehicles: 5 EVs + 1 Hybrid)
+- 🎮 **Live Prediction Simulator** — 8 interactive sliders with physics-derived connected parameters
+- ⚡ **4 Scenario Presets** — Winter, Highway Commuter, Aggressive Driver, Fleet Neglect
+- 📈 **90-Day Component Health Forecast** — tabbed per component with Time Range & Y Scale controls
+- 🚨 **Three-state alert system** — Critical card / Warning banner / Healthy forecast chart
+- 💰 Cost projections (30/90/365 day estimates) with regional pricing
 - 🔔 Priority-based maintenance recommendations
-- 📈 30-day trend visualization
-- ⚠️ Critical alert system for safety components
+- 🏷️ Live Simulation badge when simulator values differ from baseline
+
+---
+
+## 🎮 Live Prediction Simulator
+
+The simulator lets you change driving conditions in real time and watch every prediction, gauge, forecast chart, and cost estimate update instantly — proving the ML models are live, not pre-computed.
+
+### 8 Interactive Sliders
+
+| Slider | Range | Key Effect |
+|--------|-------|------------|
+| Battery SoC % | 20 – 100% | EV range prediction, battery voltage derivation |
+| Ambient Temperature °C | -10 – 45°C | Battery temps, engine temps (Hybrid), tyre temp range |
+| Driving Speed km/h | 30 – 130 km/h | Brake temperature, high-speed %, city/urban %, idle time |
+| Total Distance km | 0 – 150,000 km | All "since last service" intervals, age-based fields, charge cycles |
+| Harsh Braking Events | 0 – 200 | Brake events per 100 km, brake temperature (cumulative) |
+| Driving Style | Conservative / Normal / Aggressive | Harsh acceleration, depth of discharge, high-speed % |
+| Fast Charge % | 0 – 100% | Battery temperature avg, battery temperature range |
+| Air Quality Index | 20 – 150 | Dusty road %, engine air flow |
+
+### Physics-Derived Connected Parameters
+
+Changing one slider automatically updates correlated features so the model always receives internally consistent inputs. Key examples:
+
+- **Total Distance → 150,000 km:** `Distance_Since_Last_Replacement`, `Distance_Since_Filter_Change`, `Distance_Since_Fluid_Change`, `Tire_Age_Months`, `Battery_Age_Months`, `Total_Charge_Cycles` all derive from the fixed last-service point
+- **Ambient Temperature → -8°C:** `Battery_Temperature`, `Battery_Temperature_Avg`, `Engine_Temperature` (Hybrid) all update with realistic thermal management offsets
+- **Driving Speed → 120 km/h:** `High_Speed_Percentage`, `City_Driving_Percentage`, `Brake_Temperature_Avg`, `Gear_Shifts_Per_100km` all derive proportionally
+- **Harsh Braking → 175:** `Brake_Events_Per_100km` and `Brake_Temperature_Avg` both scale up cumulatively on top of speed effects
+
+### 4 Scenario Presets
+
+One click sets all relevant sliders simultaneously:
+
+| Preset | What it simulates | Most dramatic effect |
+|--------|------------------|----------------------|
+| ❄️ **Winter Mode** | -8°C ambient, 45% SoC, conservative style | EV range collapses, battery SoH degrades faster |
+| 🏎️ **Aggressive Driver** | 115 km/h, 175 harsh braking events, aggressive style | Brake and tyre health drop sharply, costs spike |
+| 🛣️ **Highway Commuter** | 118 km/h, 12 braking events, conservative style | Low wear, strong range efficiency |
+| 💀 **Fleet Neglect** | 148,000 km, aggressive style, 80% fast charge | Multiple components hit critical simultaneously |
+
+Sliders remain fully adjustable after any preset for fine-tuning. A **↺ Reset to Baseline** button restores all values to the vehicle's original configuration.
+
+---
+
+## 📈 90-Day Component Health Forecast
+
+Each vehicle detail page includes a forward-looking degradation forecast across 7 component tabs.
+
+### Three-State Alert System
+
+The forecast is not always a chart — it responds intelligently to the current component state:
+
+| State | Condition | What Shows |
+|-------|-----------|------------|
+| 🚨 **Critical** | Component already past critical threshold | Full-screen red alert card with current value, threshold, and required action |
+| ⚠️ **Warning** | Between warning and critical threshold | Amber banner above the chart showing current vs warning value |
+| ✅ **Healthy** | Above warning threshold | Full degradation forecast chart |
+
+This prevents the misleading scenario where a component already past its safety limit shows a flat line on a chart.
+
+### Per-Component Tabs
+
+| Tab | Unit | Warning threshold | Critical threshold |
+|-----|------|------------------|--------------------|
+| 🛞 Tires | mm tread | 3.0 mm | 2.0 mm |
+| 🔧 Brakes | mm pad | 4.0 mm | 3.0 mm |
+| 🔋 Battery | % SoH | 80% | 70% |
+| 💨 Air Filter | km remaining | 2,000 km | 500 km |
+| 💧 Coolant | km remaining | 5,000 km | 1,000 km |
+| 🛢️ Oil | km remaining | 1,500 km | 500 km |
+| ⚙️ Transmission | km remaining | 10,000 km | 2,000 km |
+
+> Oil and Transmission tabs only appear for ICE/Hybrid vehicles.
+
+### Chart Controls (per tab)
+
+- **Time Range:** 30d / 60d / 90d — clips the X axis to focus on near-term trends
+- **Y Scale — Auto:** fits the Y axis tightly to the actual data range, making subtle degradation trends visible
+- **Y Scale — Full:** shows the full component range (e.g. 0–8.2 mm for tyres) for absolute context
 
 ---
 
@@ -191,12 +273,14 @@ streamlit run app.py
 - Provides detailed predictions and maintenance recommendations
 
 **Dashboard Features:**
-- Fleet overview with health scores (0-100 scale)
-- Individual vehicle detail pages
-- Real-time predictions using trained models
-- Cost analysis (30/90/365 day projections)
-- 30-day trend charts
-- Priority-based maintenance alerts
+- Fleet overview with live health scores (0-100 scale) per vehicle
+- Individual vehicle detail pages with 4 unified KPI gauges
+- Real-time predictions using trained XGBoost models
+- Live Prediction Simulator with 8 sliders and 4 scenario presets
+- 90-day component health forecast (7 tabbed components, per-tab Time Range & Y Scale controls)
+- Three-state alert system: Critical card / Warning banner / Healthy chart
+- Cost analysis (30/90/365 day projections) with regional multipliers
+- Priority-based maintenance recommendations
 
 **Time:** Instant startup
 
@@ -211,12 +295,9 @@ streamlit run app.py
 │   ├── synthetic_data_generator.py       # Generate realistic training data
 │   ├── AI_prediction_model.py            # Train models (hybrid mode)
 │   ├── AI_Model_Benchmarking.py          # Performance analysis (optional)
-│   ├── app.py                            # Streamlit dashboard
+│   ├── app.py                            # Streamlit dashboard (simulator, forecast, alerts)
 │   ├── maintenance_cost_calculator.py    # Cost estimation logic
-│   ├── vehicle_data.py                   # Demo vehicle configurations
-│   ├── open_source_dataset.py            # Dataset integration utilities
-│   ├── pattern_based_data_augmentation.py
-│   └── data_viewer.py                    # Data exploration tool
+│   └── vehicle_data.py                   # Demo vehicle configurations + feature mappings
 │
 ├── Augmented_Datasets/                   # Real public research data
 │   ├── nasa_oil_life_augmented.csv       # 25K samples (NASA turbofan)
@@ -464,12 +545,14 @@ This project is for educational and demonstration purposes.
 
 ## 🎯 Key Differentiators
 
-✅ **Hybrid Training:** Combines real NASA data with physics-based synthetic  
-✅ **Production-Ready:** 97.7% average accuracy across all models  
-✅ **Cost-Effective:** Minimal sensors achieve 96%+ accuracy  
-✅ **Proven Results:** Top 1-5% performance vs published research  
-✅ **Safety-Critical:** Prevents tire/brake failures before they occur  
-✅ **Explainable:** Feature importance and residual analysis included  
+✅ **Hybrid Training:** Combines real NASA data with physics-based synthetic
+✅ **Production-Ready:** 97.7% average accuracy across all models
+✅ **Cost-Effective:** Minimal sensors achieve 96%+ accuracy
+✅ **Proven Results:** Top 1-5% performance vs published research
+✅ **Safety-Critical:** Prevents tire/brake failures before they occur
+✅ **Explainable:** Feature importance and residual analysis included
+✅ **Live Simulator:** 8 sliders with physics-consistent derived parameters — proves models are real, not pre-computed
+✅ **Intelligent Forecast:** Three-state alert system prevents misleading charts when components are already past their safety threshold
 
 ---
 
@@ -484,4 +567,4 @@ This project is for educational and demonstration purposes.
 
 **Built with ❤️ using Python • XGBoost • Streamlit • Plotly • NASA Research Data**
 
-**Status: Production-Ready | Accuracy: 97.7% | Training Data: 50K Real + 200K Synthetic**
+**Status: Production-Ready | Accuracy: 97.7% | Training Data: 50K Real + 200K Synthetic | Simulator: 8 sliders × 4 presets | Forecast: 7 components × 3 alert states**
