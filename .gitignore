@@ -59,6 +59,7 @@ env/
 .project
 .pydevproject
 .settings/
+.env.example
 
 # OS Generated
 .DS_Store
