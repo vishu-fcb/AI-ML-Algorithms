@@ -322,8 +322,8 @@ class MaintenanceCostCalculator:
             "EV": 300,
             "Hybrid": 600,
             "ICE": 800
-        }.get(self.vehicle_type, 500)
-        
+        }.get(self.vehicle_type, 500) * self.regional_multipliers[self.region]
+
         costs_annual = costs_90_days * 1.5 + routine_annual
         
         return {

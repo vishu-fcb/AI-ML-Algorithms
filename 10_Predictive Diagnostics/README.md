@@ -30,10 +30,13 @@ State-of-the-art predictive maintenance system achieving 96.5% average accuracy,
 | **EV Range** | 0.8101 (81.0%) | **Real OBD-II (VED)** | Real-World Validated |
 
 ### Dashboard Features
-- 🎯 Unified real-time health gauges (zoom-stable, all 4 KPIs in one figure)
-- 🚗 Multi-vehicle fleet management (6 demo vehicles: 5 EVs + 1 Hybrid)
-- 🎮 **Live Prediction Simulator** — 8 interactive sliders with physics-derived connected parameters
-- ⚡ **4 Scenario Presets** — Winter, Highway Commuter, Aggressive Driver, Fleet Neglect
+- 🎯 Unified real-time health gauges — Battery Health (EV) or Engine Health (ICE), Brake, Tire, Overall
+- 🚗 Multi-vehicle fleet management (8 demo vehicles: 4 EVs + 4 ICE with real manufacturer VINs)
+- 📊 **Vehicle-type-aware predictions** — EV models (Range, Battery SoH) skipped for ICE; Oil/Transmission skipped for EV
+- 📊 **Live fleet stats** — Active Alerts and Avg Health Score computed from real model predictions
+- 🌍 **Regional pricing selector** — US / EU / UK / CN multipliers applied to all cost estimates
+- 🎮 **Live Prediction Simulator** — 8 interactive sliders, EV-specific (SoC, Fast Charge) or ICE-specific (Engine RPM, Oil Change km)
+- ⚡ **4 Scenario Presets** — Winter, Highway Commuter, Aggressive Driver, Fleet Neglect (tailored per vehicle type)
 - 📈 **90-Day Component Health Forecast** — tabbed per component with Time Range & Y Scale controls
 - 🚨 **Three-state alert system** — Critical card / Warning banner / Healthy forecast chart
 - 💰 Cost projections (30/90/365 day estimates) with regional pricing
@@ -46,18 +49,22 @@ State-of-the-art predictive maintenance system achieving 96.5% average accuracy,
 
 The simulator lets you change driving conditions in real time and watch every prediction, gauge, forecast chart, and cost estimate update instantly — proving the ML models are live, not pre-computed.
 
-### 8 Interactive Sliders
+### 8 Interactive Sliders (vehicle-type aware)
 
-| Slider | Range | Key Effect |
-|--------|-------|------------|
-| Battery SoC % | 20 – 100% | EV range prediction, battery voltage derivation |
-| Ambient Temperature °C | -10 – 45°C | Battery temps, engine temps (Hybrid), tyre temp range |
-| Driving Speed km/h | 30 – 130 km/h | Brake temperature, high-speed %, city/urban %, idle time |
-| Total Distance km | 0 – 150,000 km | All "since last service" intervals, age-based fields, charge cycles |
-| Harsh Braking Events | 0 – 200 | Brake events per 100 km, brake temperature (cumulative) |
-| Driving Style | Conservative / Normal / Aggressive | Harsh acceleration, depth of discharge, high-speed % |
-| Fast Charge % | 0 – 100% | Battery temperature avg, battery temperature range |
-| Air Quality Index | 20 – 150 | Dusty road %, engine air flow |
+Sliders adapt to the selected vehicle. EV-specific and ICE-specific sliders swap in/out automatically.
+
+| Slider | Applies to | Range | Key Effect |
+|--------|-----------|-------|------------|
+| Battery SoC % | EV only | 20 – 100% | EV range prediction, battery voltage derivation |
+| Engine RPM | ICE only | 600 – 5,000 | Engine temperature, oil degradation rate |
+| Ambient Temperature °C | All | -10 – 45°C | Battery/engine temps, tyre temp range |
+| Driving Speed km/h | All | 30 – 130 km/h | Brake temperature, high-speed %, city/urban %, idle time |
+| Total Distance km | All | 0 – 150,000 km | All "since last service" intervals, age-based fields, charge cycles |
+| Harsh Braking Events | All | 0 – 200 | Brake events per 100 km, brake temperature (cumulative) |
+| Driving Style | All | Conservative / Normal / Aggressive | Harsh acceleration, depth of discharge, high-speed % |
+| Fast Charge % | EV only | 0 – 100% | Battery temperature avg, battery temperature range |
+| Km Since Last Oil Change | ICE only | 0 – 15,000 km | Oil life prediction directly |
+| Air Quality Index | All | 20 – 150 | Dusty road %, engine air flow |
 
 ### Physics-Derived Connected Parameters
 
@@ -72,12 +79,14 @@ Changing one slider automatically updates correlated features so the model alway
 
 One click sets all relevant sliders simultaneously:
 
-| Preset | What it simulates | Most dramatic effect |
-|--------|------------------|----------------------|
-| ❄️ **Winter Mode** | -8°C ambient, 45% SoC, conservative style | EV range collapses, battery SoH degrades faster |
-| 🏎️ **Aggressive Driver** | 115 km/h, 175 harsh braking events, aggressive style | Brake and tyre health drop sharply, costs spike |
-| 🛣️ **Highway Commuter** | 118 km/h, 12 braking events, conservative style | Low wear, strong range efficiency |
-| 💀 **Fleet Neglect** | 148,000 km, aggressive style, 80% fast charge | Multiple components hit critical simultaneously |
+Presets are tailored to the vehicle type — EV presets use SoC and Fast Charge values; ICE presets use Engine RPM and Oil Change km instead.
+
+| Preset | EV effect | ICE effect |
+|--------|-----------|------------|
+| ❄️ **Winter Mode** | Range collapses, battery SoH degrades faster | Cold starts, high idle, oil viscosity stress |
+| 🏎️ **Aggressive Driver** | Brake and tyre health drop sharply, costs spike | High RPM, brake wear, transmission stress |
+| 🛣️ **Highway Commuter** | Low wear, strong range efficiency | Low gear shifts, moderate oil consumption |
+| 💀 **Fleet Neglect** | Multiple components critical simultaneously | Overdue oil + filter + transmission fluid critical |
 
 Sliders remain fully adjustable after any preset for fine-tuning. A **↺ Reset to Baseline** button restores all values to the vehicle's original configuration.
 
@@ -85,7 +94,7 @@ Sliders remain fully adjustable after any preset for fine-tuning. A **↺ Reset 
 
 ## 📈 90-Day Component Health Forecast
 
-Each vehicle detail page includes a forward-looking degradation forecast across 7 component tabs.
+Each vehicle detail page includes a forward-looking degradation forecast. Tabs shown depend on vehicle type — irrelevant components are hidden.
 
 ### Three-State Alert System
 
@@ -101,17 +110,15 @@ This prevents the misleading scenario where a component already past its safety 
 
 ### Per-Component Tabs
 
-| Tab | Unit | Warning threshold | Critical threshold |
-|-----|------|------------------|--------------------|
-| 🛞 Tires | mm tread | 3.0 mm | 2.0 mm |
-| 🔧 Brakes | mm pad | 4.0 mm | 3.0 mm |
-| 🔋 Battery | % SoH | 80% | 70% |
-| 💨 Air Filter | km remaining | 2,000 km | 500 km |
-| 💧 Coolant | km remaining | 5,000 km | 1,000 km |
-| 🛢️ Oil | km remaining | 1,500 km | 500 km |
-| ⚙️ Transmission | km remaining | 10,000 km | 2,000 km |
-
-> Oil and Transmission tabs only appear for ICE/Hybrid vehicles.
+| Tab | Unit | Warning | Critical | Shown for |
+|-----|------|---------|----------|-----------|
+| 🛞 Tires | mm tread | 3.0 mm | 2.0 mm | All |
+| 🔧 Brakes | mm pad | 4.0 mm | 3.0 mm | All |
+| 🔋 Battery | % SoH | 80% | 70% | **EV only** |
+| 💨 Air Filter | km remaining | 2,000 km | 500 km | All |
+| 💧 Coolant | km remaining | 5,000 km | 1,000 km | All |
+| 🛢️ Oil | km remaining | 1,500 km | 500 km | **ICE only** |
+| ⚙️ Transmission | km remaining | 10,000 km | 2,000 km | **ICE only** |
 
 ### Chart Controls (per tab)
 
@@ -278,15 +285,18 @@ streamlit run app.py
 
 **What it does:**
 - Opens interactive web interface at `http://localhost:8501`
-- Displays fleet overview with 6 demo vehicles (5 EVs + 1 Hybrid)
-- Provides detailed predictions and maintenance recommendations
+- Displays fleet overview with 8 demo vehicles (4 EVs + 4 ICE with real manufacturer VINs)
+- Provides detailed predictions and maintenance recommendations tailored to vehicle type
 
 **Dashboard Features:**
-- Fleet overview with live health scores (0-100 scale) per vehicle
-- Individual vehicle detail pages with 4 unified KPI gauges
-- Real-time predictions using trained XGBoost models
-- Live Prediction Simulator with 8 sliders and 4 scenario presets
-- 90-day component health forecast (7 tabbed components, per-tab Time Range & Y Scale controls)
+- Fleet overview with live health scores (0-100 scale) and live Active Alerts / Avg Health sidebar stats
+- Individual vehicle detail pages with 4 unified KPI gauges (Battery Health for EV, Engine Health for ICE)
+- Vehicle-type-aware predictions — EV models skipped for ICE vehicles and vice versa
+- Predictive Insights cards adapt per type: EV shows Range + Battery Health, ICE shows Oil Life + Transmission Fluid
+- Regional pricing selector (US / EU / UK / CN) applied to all cost estimates
+- Live Prediction Simulator with 8 sliders (EV-specific and ICE-specific sliders swap automatically)
+- 4 Scenario Presets tailored to vehicle type (EV or ICE)
+- 90-day component health forecast (tabs shown per vehicle type, per-tab Time Range & Y Scale controls)
 - Three-state alert system: Critical card / Warning banner / Healthy chart
 - Cost analysis (30/90/365 day projections) with regional multipliers
 - Priority-based maintenance recommendations
@@ -404,14 +414,29 @@ streamlit run app.py
 
 ### Add Custom Vehicles
 
-Edit `vehicle_data.py`:
+Edit `vehicle_data.py`. Use a real 17-character VIN matching the manufacturer's WMI code (e.g. `5YJ` for Tesla US, `WBA` for BMW, `1FTF` for Ford truck, `WVW` for VW).
 
 ```python
-vehicles_data["VIN_YOUR_NUMBER"] = {
-    "name": "Your Vehicle Name",
-    "type": "EV",  # or "ICE" or "Hybrid"
+vehicles_data["5YJ3E1EA1NF499999"] = {
+    "name": "Your EV Name",
+    "type": "EV",       # EV: skips oil_life, transmission_health models
     "SoC": 85,
     "SoH": 90,
+    "Battery_Voltage": 400,
+    # ... add all required features (see examples in file)
+    "Distance_Since_Last_Change": 0,   # N/A for EV — set to 0
+    "Transmission_Temperature": 0,     # N/A for EV — set to 0
+}
+
+vehicles_data["1FTFW1ET5NFA99999"] = {
+    "name": "Your ICE Name",
+    "type": "ICE",      # ICE: skips ev_range, battery_degradation models
+    "SoC": 0,           # N/A for ICE — set to 0
+    "SoH": 0,           # N/A for ICE — set to 0
+    "Battery_Voltage": 12,             # 12V lead-acid
+    "Engine_Temperature": 88,
+    "Engine_RPM": 2000,
+    "Distance_Since_Last_Change": 6000,
     # ... add all required features (see examples in file)
 }
 ```
@@ -651,6 +676,10 @@ This project is for educational and demonstration purposes.
 ✅ **Explainable:** Feature importance and residual analysis included
 ✅ **Live Simulator:** 8 sliders with physics-consistent derived parameters — proves models are real, not pre-computed
 ✅ **Intelligent Forecast:** Three-state alert system prevents misleading charts when components are already past their safety threshold
+✅ **Vehicle-Type Intelligence:** EV models (Range, Battery SoH) automatically skipped for ICE; Oil/Transmission skipped for EV — no nonsense predictions
+✅ **Mixed Fleet Support:** 4 EV + 4 ICE demo vehicles with real manufacturer VINs covering diverse failure scenarios
+✅ **Regional Pricing:** Cost estimates adjust automatically for US / EU / UK / CN labour rates and parts pricing
+✅ **Live Fleet Stats:** Active Alerts and Avg Health Score computed from real model predictions, not hardcoded values
 
 ---
 
@@ -663,4 +692,4 @@ This project is for educational and demonstration purposes.
 
 ---
 
-**Status: Production-Ready | Accuracy: 96.5% avg | Training Data: 53K Real (VED + NASA) + 200K Synthetic | EV Range: Real OBD-II validated (R²=0.81) | Simulator: 8 sliders × 4 presets | Forecast: 7 components × 3 alert states**
+**Status: Production-Ready | Accuracy: 96.5% avg | Training Data: 53K Real (VED + NASA) + 200K Synthetic | Fleet: 4 EV + 4 ICE (real VINs) | EV Range: Real OBD-II validated (R²=0.81) | Simulator: 8 sliders (EV/ICE-aware) × 4 presets | Forecast: 7 components × 3 alert states | Pricing: US/EU/UK/CN**

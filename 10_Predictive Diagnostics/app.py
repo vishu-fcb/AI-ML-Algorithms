@@ -596,12 +596,12 @@ def create_degradation_forecast(predictions, vehicle_data, vehicle_type):
     return fig
 
 
-def create_gauges_row(health_score, batt_health, brake_health, tire_health):
+def create_gauges_row(health_score, batt_health, brake_health, tire_health, second_label="Battery Health"):
     """Render all 4 KPI gauges as one single figure — immune to zoom misalignment."""
     from plotly.subplots import make_subplots
 
     values = [health_score, batt_health, brake_health, tire_health]
-    titles = ["Overall Health", "Battery Health", "Brake Health", "Tire Health"]
+    titles = ["Overall Health", second_label, "Brake Health", "Tire Health"]
     colors = ['#00C853' if v > 70 else '#FFB366' if v > 40 else '#FF4444' for v in values]
 
     fig = make_subplots(
@@ -931,10 +931,19 @@ def generate_recommendations(predictions, vehicle_type):
     return sorted(recommendations, key=lambda x: {'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3}[x['priority']])
 
 def make_predictions(models, vehicle_data):
-    """Make all predictions for a vehicle"""
+    """Make all predictions for a vehicle, skipping models irrelevant to vehicle type."""
+    vehicle_type = vehicle_data.get('type', 'EV')
     predictions = {}
-    
+
+    # Models that only apply to specific vehicle types
+    ev_only_models  = {'ev_range', 'battery_degradation'}
+    ice_only_models = {'oil_life', 'transmission_health'}
+
     for model_name, features in feature_mappings.items():
+        if vehicle_type == 'ICE' and model_name in ev_only_models:
+            continue
+        if vehicle_type == 'EV' and model_name in ice_only_models:
+            continue
         if model_name in models:
             try:
                 X = pd.DataFrame([{k: vehicle_data[k] for k in features}])
@@ -965,9 +974,9 @@ def make_predictions(models, vehicle_data):
     
     return result
 
-def display_maintenance_costs(predictions, vehicle_type):
+def display_maintenance_costs(predictions, vehicle_type, region="US"):
     """Display comprehensive maintenance cost analysis"""
-    calculator = MaintenanceCostCalculator(vehicle_type=vehicle_type, region="US")
+    calculator = MaintenanceCostCalculator(vehicle_type=vehicle_type, region=region)
     cost_results = calculator.calculate_total_maintenance_costs(predictions)
     
     st.markdown("---")
@@ -1064,6 +1073,15 @@ def main():
             st.session_state.selected_vehicle = None
 
         st.markdown("---")
+        st.markdown("**Region**")
+        st.session_state["region"] = st.selectbox(
+            "Pricing Region",
+            options=["US", "EU", "UK", "CN"],
+            format_func=lambda r: {"US": "🇺🇸 United States", "EU": "🇪🇺 Europe", "UK": "🇬🇧 United Kingdom", "CN": "🇨🇳 China"}[r],
+            label_visibility="collapsed"
+        )
+
+        st.markdown("---")
         st.markdown("**Quick Stats**")
         _active_alerts, _avg_health = compute_fleet_stats(models)
         st.metric("Total Vehicles", len(vehicles_data))
@@ -1085,9 +1103,11 @@ def main():
 
             # ── Scenario Preset Buttons ──
             st.markdown("**Quick Scenarios**")
-            _SIM_KEYS = ["sim_SoC","sim_Ambient_Temperature","sim_Driving_Speed",
-                         "sim_Total_Distance","sim_Harsh_Braking_Events",
-                         "sim_Driving_Style","sim_Fast_Charge_Percentage","sim_Air_Quality_Index"]
+            _is_ev_sim = _base['type'] == 'EV'
+            _SIM_KEYS = ["sim_Ambient_Temperature", "sim_Driving_Speed", "sim_Total_Distance",
+                         "sim_Harsh_Braking_Events", "sim_Driving_Style", "sim_Air_Quality_Index",
+                         "sim_SoC", "sim_Fast_Charge_Percentage",
+                         "sim_Engine_RPM", "sim_Distance_Since_Last_Change"]
 
             def _apply_preset(values: dict):
                 for k in _SIM_KEYS:
@@ -1095,57 +1115,45 @@ def main():
                 for k, v in values.items():
                     st.session_state[k] = v
 
+            if _is_ev_sim:
+                _presets = {
+                    "❄️ Winter":     {"sim_SoC": 45, "sim_Ambient_Temperature": -8,  "sim_Driving_Speed": 52,  "sim_Harsh_Braking_Events": 35,  "sim_Driving_Style": 0, "sim_Fast_Charge_Percentage": 25, "sim_Air_Quality_Index": 55},
+                    "🛣️ Highway":    {"sim_SoC": 82, "sim_Ambient_Temperature": 22,  "sim_Driving_Speed": 118, "sim_Harsh_Braking_Events": 12,  "sim_Driving_Style": 0, "sim_Fast_Charge_Percentage": 20, "sim_Air_Quality_Index": 40},
+                    "🏎️ Aggressive": {"sim_SoC": 35, "sim_Ambient_Temperature": 28,  "sim_Driving_Speed": 115, "sim_Harsh_Braking_Events": 175, "sim_Driving_Style": 2, "sim_Fast_Charge_Percentage": 65, "sim_Air_Quality_Index": 88},
+                    "💀 Neglected":  {"sim_SoC": 28, "sim_Ambient_Temperature": 32,  "sim_Driving_Speed": 95,  "sim_Total_Distance": 148000, "sim_Harsh_Braking_Events": 165, "sim_Driving_Style": 2, "sim_Fast_Charge_Percentage": 80, "sim_Air_Quality_Index": 130},
+                }
+            else:
+                _presets = {
+                    "❄️ Winter":     {"sim_Engine_RPM": 2000, "sim_Ambient_Temperature": -8,  "sim_Driving_Speed": 52,  "sim_Harsh_Braking_Events": 35,  "sim_Driving_Style": 0, "sim_Distance_Since_Last_Change": 9000,  "sim_Air_Quality_Index": 55},
+                    "🛣️ Highway":    {"sim_Engine_RPM": 2800, "sim_Ambient_Temperature": 22,  "sim_Driving_Speed": 118, "sim_Harsh_Braking_Events": 12,  "sim_Driving_Style": 0, "sim_Distance_Since_Last_Change": 4000,  "sim_Air_Quality_Index": 40},
+                    "🏎️ Aggressive": {"sim_Engine_RPM": 4000, "sim_Ambient_Temperature": 28,  "sim_Driving_Speed": 115, "sim_Harsh_Braking_Events": 175, "sim_Driving_Style": 2, "sim_Distance_Since_Last_Change": 10000, "sim_Air_Quality_Index": 88},
+                    "💀 Neglected":  {"sim_Engine_RPM": 3500, "sim_Ambient_Temperature": 32,  "sim_Driving_Speed": 95,  "sim_Total_Distance": 148000, "sim_Harsh_Braking_Events": 165, "sim_Driving_Style": 2, "sim_Distance_Since_Last_Change": 14000, "sim_Air_Quality_Index": 130},
+                }
+
             col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button("❄️ Winter", key="preset_winter", use_container_width=True):
-                    _apply_preset({
-                        "sim_SoC": 45, "sim_Ambient_Temperature": -8,
-                        "sim_Driving_Speed": 52, "sim_Harsh_Braking_Events": 35,
-                        "sim_Driving_Style": 0, "sim_Fast_Charge_Percentage": 25,
-                        "sim_Air_Quality_Index": 55,
-                    })
-                    st.rerun()
-                if st.button("🛣️ Highway", key="preset_highway", use_container_width=True):
-                    _apply_preset({
-                        "sim_SoC": 82, "sim_Ambient_Temperature": 22,
-                        "sim_Driving_Speed": 118, "sim_Harsh_Braking_Events": 12,
-                        "sim_Driving_Style": 0, "sim_Fast_Charge_Percentage": 20,
-                        "sim_Air_Quality_Index": 40,
-                    })
-                    st.rerun()
-            with col_b:
-                if st.button("🏎️ Aggressive", key="preset_aggressive", use_container_width=True):
-                    _apply_preset({
-                        "sim_SoC": 35, "sim_Ambient_Temperature": 28,
-                        "sim_Driving_Speed": 115, "sim_Harsh_Braking_Events": 175,
-                        "sim_Driving_Style": 2, "sim_Fast_Charge_Percentage": 65,
-                        "sim_Air_Quality_Index": 88,
-                    })
-                    st.rerun()
-                if st.button("💀 Neglected", key="preset_neglected", use_container_width=True):
-                    _apply_preset({
-                        "sim_SoC": 28, "sim_Ambient_Temperature": 32,
-                        "sim_Driving_Speed": 95, "sim_Total_Distance": 148000,
-                        "sim_Harsh_Braking_Events": 165, "sim_Driving_Style": 2,
-                        "sim_Fast_Charge_Percentage": 80, "sim_Air_Quality_Index": 130,
-                    })
-                    st.rerun()
+            _preset_items = list(_presets.items())
+            for _col, (_label, _vals) in zip([col_a, col_a, col_b, col_b], _preset_items):
+                with _col:
+                    _key = "preset_" + _label.split()[1].lower()
+                    if st.button(_label, key=_key, use_container_width=True):
+                        _apply_preset(_vals)
+                        st.rerun()
 
             st.markdown("---")
             st.caption("Or adjust manually:")
 
             if st.button("↺ Reset to Baseline", key="sim_reset", use_container_width=True):
-                for _k in [
-                    "sim_SoC", "sim_Ambient_Temperature", "sim_Driving_Speed",
-                    "sim_Total_Distance", "sim_Harsh_Braking_Events",
-                    "sim_Driving_Style", "sim_Fast_Charge_Percentage",
-                    "sim_Air_Quality_Index",
-                ]:
+                for _k in _SIM_KEYS:
                     st.session_state.pop(_k, None)
 
-            st.slider("Battery SoC %", 20, 100,
-                      value=st.session_state.get("sim_SoC", int(_base["SoC"])),
-                      key="sim_SoC")
+            if _is_ev_sim:
+                st.slider("Battery SoC %", 20, 100,
+                          value=st.session_state.get("sim_SoC", int(_base["SoC"])),
+                          key="sim_SoC")
+            else:
+                st.slider("Engine RPM", 600, 5000,
+                          value=st.session_state.get("sim_Engine_RPM", int(_base["Engine_RPM"])),
+                          step=100, key="sim_Engine_RPM")
 
             st.slider("Ambient Temperature °C", -10, 45,
                       value=st.session_state.get("sim_Ambient_Temperature",
@@ -1174,10 +1182,16 @@ def main():
                                                      int(_base["Driving_Style"])),
                          key="sim_Driving_Style")
 
-            st.slider("Fast Charge %", 0, 100,
-                      value=st.session_state.get("sim_Fast_Charge_Percentage",
-                                                  int(_base["Fast_Charge_Percentage"])),
-                      key="sim_Fast_Charge_Percentage")
+            if _is_ev_sim:
+                st.slider("Fast Charge %", 0, 100,
+                          value=st.session_state.get("sim_Fast_Charge_Percentage",
+                                                      int(_base["Fast_Charge_Percentage"])),
+                          key="sim_Fast_Charge_Percentage")
+            else:
+                st.slider("Km Since Last Oil Change", 0, 15000,
+                          value=st.session_state.get("sim_Distance_Since_Last_Change",
+                                                      int(_base["Distance_Since_Last_Change"])),
+                          step=250, key="sim_Distance_Since_Last_Change")
 
             st.slider("Air Quality Index", 20, 150,
                       value=st.session_state.get("sim_Air_Quality_Index",
@@ -1233,24 +1247,30 @@ def main():
             for _k in ["sim_SoC", "sim_Ambient_Temperature", "sim_Driving_Speed",
                        "sim_Total_Distance", "sim_Harsh_Braking_Events",
                        "sim_Driving_Style", "sim_Fast_Charge_Percentage",
-                       "sim_Air_Quality_Index"]:
+                       "sim_Air_Quality_Index",
+                       "sim_Engine_RPM", "sim_Distance_Since_Last_Change"]:
                 st.session_state.pop(_k, None)
             st.session_state["_last_sim_vehicle"] = vehicle
 
         vehicle_data = vehicles_data[vehicle]
 
         # Build live_data: baseline from vehicle_data, overridden by simulator sliders
+        _is_ev = vehicle_data['type'] == 'EV'
         _sim_keys = {
-            "SoC":                    "sim_SoC",
-            "Ambient_Temperature":    "sim_Ambient_Temperature",
-            "Driving_Speed":          "sim_Driving_Speed",
-            "Average_Speed":          "sim_Driving_Speed",   # same slider drives both features
-            "Total_Distance":         "sim_Total_Distance",
-            "Harsh_Braking_Events":   "sim_Harsh_Braking_Events",
-            "Driving_Style":          "sim_Driving_Style",
-            "Fast_Charge_Percentage": "sim_Fast_Charge_Percentage",
-            "Air_Quality_Index":      "sim_Air_Quality_Index",
+            "Ambient_Temperature":  "sim_Ambient_Temperature",
+            "Driving_Speed":        "sim_Driving_Speed",
+            "Average_Speed":        "sim_Driving_Speed",  # same slider drives both features
+            "Total_Distance":       "sim_Total_Distance",
+            "Harsh_Braking_Events": "sim_Harsh_Braking_Events",
+            "Driving_Style":        "sim_Driving_Style",
+            "Air_Quality_Index":    "sim_Air_Quality_Index",
         }
+        if _is_ev:
+            _sim_keys["SoC"]                    = "sim_SoC"
+            _sim_keys["Fast_Charge_Percentage"] = "sim_Fast_Charge_Percentage"
+        else:
+            _sim_keys["Engine_RPM"]                  = "sim_Engine_RPM"
+            _sim_keys["Distance_Since_Last_Change"]  = "sim_Distance_Since_Last_Change"
         _overrides = {
             dk: st.session_state[sk]
             for dk, sk in _sim_keys.items()
@@ -1399,6 +1419,20 @@ def main():
             # Lithium-ion open-circuit voltage: ~350V at 20% SoC, ~420V at 100% SoC
             live_data["Battery_Voltage"] = round(350 + (sim_soc / 100) * 70, 1)
 
+        # ── Engine RPM (ICE only): raises engine temp and accelerates oil degradation ──
+        if "Engine_RPM" in _overrides:
+            sim_rpm = _overrides["Engine_RPM"]
+            base_rpm = max(vehicle_data["Engine_RPM"], 1)
+            rpm_ratio = sim_rpm / base_rpm
+            # Higher RPM = hotter engine
+            live_data["Engine_Temperature"]     = int(np.clip(vehicle_data["Engine_Temperature"] * (0.8 + rpm_ratio * 0.25), 60, 115))
+            live_data["Engine_Temperature_Avg"] = int(np.clip(vehicle_data["Engine_Temperature_Avg"] * (0.8 + rpm_ratio * 0.25), 60, 110))
+            live_data["Engine_Temperature_Max"] = int(np.clip(vehicle_data["Engine_Temperature_Max"] * (0.85 + rpm_ratio * 0.20), 70, 120))
+
+        # ── Distance Since Last Oil Change (ICE only) ──
+        if "Distance_Since_Last_Change" in _overrides:
+            live_data["Distance_Since_Last_Change"] = _overrides["Distance_Since_Last_Change"]
+
         _sim_active = any(live_data[dk] != vehicle_data[dk] for dk in live_data if dk in vehicle_data)
 
         # Back button
@@ -1422,11 +1456,17 @@ def main():
         
         # Health metrics — single figure so zoom never breaks alignment
         st.markdown("---")
-        batt_health  = predictions.get('battery_soh', vehicle_data.get('SoH', 90))
+        if vehicle_data['type'] == 'EV':
+            second_val   = predictions.get('battery_soh', vehicle_data.get('SoH', 90))
+            second_label = "Battery Health"
+        else:
+            # Engine health: how much oil life remains as a % of full interval (10 500 km)
+            second_val   = min(100.0, (predictions.get('oil_life', 5000) / 10500) * 100)
+            second_label = "Engine Health"
         brake_health = min((predictions.get('brake_thickness', 10) / 12) * 100, 100)
         tire_health  = min((predictions.get('tire_tread', 6) / 8) * 100, 100)
         st.plotly_chart(
-            create_gauges_row(health_score, batt_health, brake_health, tire_health),
+            create_gauges_row(health_score, second_val, brake_health, tire_health, second_label),
             use_container_width=True,
         )
         
@@ -1436,7 +1476,7 @@ def main():
         
         cols = st.columns(3)
         
-        if 'ev_range' in predictions:
+        if vehicle_data['type'] == 'EV' and 'ev_range' in predictions:
             with cols[0]:
                 range_val = predictions['ev_range']
                 range_status, range_color = get_alert_level(range_val, {'critical': 100, 'warning': 150})
@@ -1449,18 +1489,46 @@ def main():
                     <p style="color:#888;">Status: <span style="color:{range_color};">{range_status}</span></p>
                 </div>
                 """, unsafe_allow_html=True)
-        
-        if 'oil_life' in predictions and vehicle_data['type'] != "EV":
-            with cols[1]:
-                oil_val = predictions['oil_life']
-                oil_status, oil_color = get_alert_level(oil_val, {'critical': 500, 'warning': 1500})
+
+        if vehicle_data['type'] != 'EV' and 'oil_life' in predictions:
+            with cols[0]:
+                oil_val0 = predictions['oil_life']
+                oil_s0, oil_c0 = get_alert_level(oil_val0, {'critical': 500, 'warning': 1500})
                 st.markdown(f"""
-                <div class="metric-card" style="border-left-color: {oil_color};">
+                <div class="metric-card" style="border-left-color: {oil_c0};">
                     <h4>🛢️ Oil Life</h4>
-                    <p style="font-size:36px; font-weight:bold; color:{oil_color}; margin:5px 0;">
-                        {oil_val:.0f} km
+                    <p style="font-size:36px; font-weight:bold; color:{oil_c0}; margin:5px 0;">
+                        {oil_val0:.0f} km
                     </p>
-                    <p style="color:#888;">Status: <span style="color:{oil_color};">{oil_status}</span></p>
+                    <p style="color:#888;">Status: <span style="color:{oil_c0};">{oil_s0}</span></p>
+                </div>
+                """, unsafe_allow_html=True)
+
+        if vehicle_data['type'] == 'EV' and 'battery_soh' in predictions:
+            with cols[1]:
+                soh_val = predictions['battery_soh']
+                soh_status, soh_color = get_alert_level(soh_val, {'critical': 70, 'warning': 80})
+                st.markdown(f"""
+                <div class="metric-card" style="border-left-color: {soh_color};">
+                    <h4>⚡ Battery Health</h4>
+                    <p style="font-size:36px; font-weight:bold; color:{soh_color}; margin:5px 0;">
+                        {soh_val:.1f}%
+                    </p>
+                    <p style="color:#888;">Status: <span style="color:{soh_color};">{soh_status}</span></p>
+                </div>
+                """, unsafe_allow_html=True)
+
+        if vehicle_data['type'] != 'EV' and 'transmission_life' in predictions:
+            with cols[1]:
+                trans_val = predictions['transmission_life']
+                trans_status, trans_color = get_alert_level(trans_val, {'critical': 2000, 'warning': 10000})
+                st.markdown(f"""
+                <div class="metric-card" style="border-left-color: {trans_color};">
+                    <h4>⚙️ Transmission Fluid</h4>
+                    <p style="font-size:36px; font-weight:bold; color:{trans_color}; margin:5px 0;">
+                        {trans_val:.0f} km
+                    </p>
+                    <p style="color:#888;">Status: <span style="color:{trans_color};">{trans_status}</span></p>
                 </div>
                 """, unsafe_allow_html=True)
         
@@ -1628,7 +1696,7 @@ def main():
             """, unsafe_allow_html=True)
         
         # Cost analysis
-        display_maintenance_costs(predictions, vehicle_data['type'])
+        display_maintenance_costs(predictions, vehicle_data['type'], region=st.session_state.get("region", "US"))
 
 if __name__ == "__main__":
     main()
