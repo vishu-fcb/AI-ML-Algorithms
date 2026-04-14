@@ -1029,23 +1029,46 @@ def display_maintenance_costs(predictions, vehicle_type):
             </div>
             """, unsafe_allow_html=True)
 
+@st.cache_data
+def compute_fleet_stats(_models):
+    """Compute active alert count and average health score across all vehicles."""
+    scores = []
+    alert_count = 0
+    for vin, data in vehicles_data.items():
+        preds = make_predictions(_models, data)
+        score = calculate_health_score(preds, data['type'])
+        scores.append(score)
+        if score < 70 or calculate_critical_penalty(preds) > 0:
+            alert_count += 1
+    avg = round(sum(scores) / len(scores), 1) if scores else 0.0
+    return alert_count, avg
+
+
 def main():
     """Main application"""
-    
+
+    # Load models early so sidebar stats can use them
+    models = load_models()
+
+    if not models:
+        st.error("⚠️ No models found! Please train models first by running: `python AI_prediction_model.py`")
+        return
+
     # Sidebar
     with st.sidebar:
         st.markdown("### 🚗 BeyondTech")
         st.markdown("**Predictive Maintenance Platform**")
         st.markdown("---")
-        
+
         if st.button("🏠 Dashboard Home"):
             st.session_state.selected_vehicle = None
-        
+
         st.markdown("---")
         st.markdown("**Quick Stats**")
+        _active_alerts, _avg_health = compute_fleet_stats(models)
         st.metric("Total Vehicles", len(vehicles_data))
-        st.metric("Active Alerts", "5")
-        st.metric("Avg Health Score", "86.3")
+        st.metric("Active Alerts", _active_alerts)
+        st.metric("Avg Health Score", _avg_health)
         
         st.markdown("---")
         st.markdown("**About**")
@@ -1160,13 +1183,6 @@ def main():
                       value=st.session_state.get("sim_Air_Quality_Index",
                                                   int(_base["Air_Quality_Index"])),
                       key="sim_Air_Quality_Index")
-    
-    # Load models
-    models = load_models()
-    
-    if not models:
-        st.error("⚠️ No models found! Please train models first by running: `python AI_prediction_model.py`")
-        return
     
     # Initialize session state
     if "selected_vehicle" not in st.session_state:
