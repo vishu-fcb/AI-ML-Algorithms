@@ -42,6 +42,7 @@ State-of-the-art predictive maintenance system achieving 96.5% average accuracy,
 - 💰 Cost projections (30/90/365 day estimates) with regional pricing
 - 🔔 Priority-based maintenance recommendations
 - 🏷️ Live Simulation badge when simulator values differ from baseline
+- 🛒 **Parts & Workshop Marketplace** — triggered on Critical alerts: estimated EUR parts pricing with eBay search links + interactive Google Maps showing nearby workshops across the vehicle's country
 
 ---
 
@@ -128,6 +129,53 @@ This prevents the misleading scenario where a component already past its safety 
 
 ---
 
+## 🛒 Parts & Workshop Marketplace
+
+When any component reaches **Critical** status, a collapsible marketplace panel appears automatically below the Maintenance Recommendations section — closing the loop from alert to action without the user leaving the app.
+
+### Parts Pricing Table
+
+| Column | Detail |
+|--------|--------|
+| **Part** | Component name (7 parts covered) |
+| **Est. Price (EUR)** | Static retail price range, vehicle-type-aware (EV/ICE/Hybrid) |
+| **Buy Online** | Live eBay search link — opens pre-filtered search in a new tab |
+
+EV-irrelevant parts (Engine Oil, Transmission Fluid) are automatically hidden for EV vehicles. ICE-irrelevant parts (Battery Health Assessment) are hidden for ICE vehicles.
+
+### Workshop Map (Google Maps Places API)
+
+An interactive dark map centred on the vehicle's home city showing `car_repair` workshops within a 10km radius of the home city and 8km radius across 5–6 major cities in the same country — so zooming out reveals country-wide coverage.
+
+| Vehicle | Home City | Country coverage |
+|---------|-----------|-----------------|
+| Tesla Model 3 Performance | Amsterdam | + Rotterdam, The Hague, Utrecht, Eindhoven |
+| BMW i4 eDrive40 | Berlin | + Hamburg, Munich, Frankfurt, Cologne, Stuttgart |
+| Mercedes EQS 450+ | Stuttgart | + Munich, Frankfurt, Cologne, Hamburg, Berlin |
+| Porsche Taycan Turbo S | Frankfurt | + Stuttgart, Munich, Berlin, Hamburg, Cologne |
+| Ford F-150 XL | Munich | + Frankfurt, Stuttgart, Nuremberg, Augsburg |
+| BMW 330i xDrive | Munich | + Frankfurt, Stuttgart, Nuremberg, Augsburg |
+| Toyota Camry LE | Hamburg | + Berlin, Bremen, Hanover, Dortmund |
+| VW Golf GTI | Berlin | + Hamburg, Munich, Frankfurt, Cologne, Stuttgart |
+
+Each workshop pin popup shows: **name · star rating · address · Get Directions link** (opens Google Maps navigation).
+
+### API Setup
+
+Add the key to your `.env` file alongside any other existing keys:
+```
+GOOGLE_MAPS_API_KEY=your_key_here
+```
+> Requires **Places API** and **Geocoding API** enabled in Google Cloud Console. The `.env` file is gitignored.
+
+> Without a key, the parts table still renders fully. The map slot shows an info message instead.
+
+### Cost Efficiency
+
+Workshop data is cached per vehicle for the entire Streamlit session using `@st.cache_data`. The API is called **once on first open**, not on every re-run. A full demo session opening 3–4 vehicles costs < €0.01 in API credits.
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -153,6 +201,9 @@ source .venv/bin/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
+
+# 4. (Optional) Enable workshop map — add your Google Maps API key to .env
+# Edit .env and add: GOOGLE_MAPS_API_KEY=your_key_here
 ```
 
 ---
@@ -300,6 +351,7 @@ streamlit run app.py
 - Three-state alert system: Critical card / Warning banner / Healthy chart
 - Cost analysis (30/90/365 day projections) with regional multipliers
 - Priority-based maintenance recommendations
+- Parts & Workshop Marketplace panel (Critical alerts only) — EUR parts pricing with eBay links + Google Maps workshop search across vehicle's home country
 
 **Time:** Instant startup
 
@@ -317,6 +369,7 @@ streamlit run app.py
 │   ├── AI_Model_Benchmarking.py          # Performance analysis (optional)
 │   ├── app.py                            # Streamlit dashboard (simulator, forecast, alerts)
 │   ├── maintenance_cost_calculator.py    # Cost estimation logic
+│   ├── marketplace.py                    # Parts pricing table + Google Maps workshop search
 │   └── vehicle_data.py                   # Demo vehicle configurations + feature mappings
 │
 ├── Augmented_Datasets/                   # Real public research data (gitignored, regenerate locally)
@@ -343,6 +396,7 @@ streamlit run app.py
 ├── Visualizations/                       # Generated plots
 │
 ├── requirements.txt                      # Python dependencies
+├── .env                                  # API keys incl. GOOGLE_MAPS_API_KEY (gitignored)
 ├── README.md                             # This file
 └── Data_guide.md                         # Data documentation
 ```
@@ -483,6 +537,17 @@ python synthetic_data_generator.py
 # Solution: Install dependencies
 pip install -r requirements.txt
 ```
+
+### Issue: Workshop map not showing (info message instead)
+```bash
+# Solution: Add Google Maps API key to your .env file
+# GOOGLE_MAPS_API_KEY=your_key_here
+# Requires Places API + Geocoding API enabled in Google Cloud Console
+```
+
+### Issue: Workshop map shows warning "Could not load workshop locations"
+- Check the API key is valid and Places API + Geocoding API are enabled
+- Verify billing is active on the Google Cloud project (free tier is sufficient)
 
 ### Issue: Dashboard shows blank/errors
 **Common causes:**
@@ -680,6 +745,7 @@ This project is for educational and demonstration purposes.
 ✅ **Mixed Fleet Support:** 4 EV + 4 ICE demo vehicles with real manufacturer VINs covering diverse failure scenarios
 ✅ **Regional Pricing:** Cost estimates adjust automatically for US / EU / UK / CN labour rates and parts pricing
 ✅ **Live Fleet Stats:** Active Alerts and Avg Health Score computed from real model predictions, not hardcoded values
+✅ **Parts & Workshop Marketplace:** On Critical alert — EUR parts pricing with live eBay search links + Google Maps workshop map spanning the vehicle's home country (session-cached, < €0.01 per demo run)
 
 ---
 
@@ -692,4 +758,4 @@ This project is for educational and demonstration purposes.
 
 ---
 
-**Status: Production-Ready | Accuracy: 96.5% avg | Training Data: 53K Real (VED + NASA) + 200K Synthetic | Fleet: 4 EV + 4 ICE (real VINs) | EV Range: Real OBD-II validated (R²=0.81) | Simulator: 8 sliders (EV/ICE-aware) × 4 presets | Forecast: 7 components × 3 alert states | Pricing: US/EU/UK/CN**
+**Status: Production-Ready | Accuracy: 96.5% avg | Training Data: 53K Real (VED + NASA) + 200K Synthetic | Fleet: 4 EV + 4 ICE (real VINs) | EV Range: Real OBD-II validated (R²=0.81) | Simulator: 8 sliders (EV/ICE-aware) × 4 presets | Forecast: 7 components × 3 alert states | Pricing: US/EU/UK/CN | Marketplace: Parts pricing + Google Maps workshops (Critical alerts)**

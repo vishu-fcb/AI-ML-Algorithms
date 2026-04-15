@@ -1053,21 +1053,17 @@ def render_marketplace_panel(recommendations: list, vehicle_data: dict):
             "Parts prices shown in EUR (estimated). "
             "Nearby workshops based on your vehicle's home city."
         )
-        marketplace.render_parts_table(vehicle_data['type'], [])
+        marketplace.render_parts_table(vehicle_data['type'])
 
         st.markdown("---")
         st.markdown("#### Nearby Workshops")
 
         if marketplace.GOOGLE_MAPS_API_KEY:
-            gmaps = marketplace.get_gmaps_client()
-            if gmaps:
-                workshop_map = marketplace.render_workshop_map(vehicle_data['name'], gmaps)
-                if workshop_map:
-                    st_folium(workshop_map, width="100%", height=450, returned_objects=[])
-                else:
-                    st.warning("Could not load workshop locations for this vehicle.")
+            workshop_map = marketplace.render_workshop_map(vehicle_data['name'])
+            if workshop_map:
+                st_folium(workshop_map, width="100%", height=450, returned_objects=[])
             else:
-                st.warning("Google Maps client could not be initialised. Check your API key.")
+                st.warning("Could not load workshop locations for this vehicle.")
         else:
             st.info(
                 "Set `GOOGLE_MAPS_API_KEY` in a `.env` file in the app directory "
