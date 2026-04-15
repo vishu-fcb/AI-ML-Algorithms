@@ -13,6 +13,7 @@ import os
 from maintenance_cost_calculator import MaintenanceCostCalculator
 from vehicle_data import vehicles_data, feature_mappings
 import marketplace
+import ai_diagnosis
 from streamlit_folium import st_folium
 
 # Page configuration
@@ -1033,15 +1034,38 @@ def display_maintenance_costs(predictions, vehicle_type, region="US"):
             </div>
             """, unsafe_allow_html=True)
 
-def render_marketplace_panel(recommendations: list, vehicle_data: dict):
+def render_marketplace_panel(recommendations: list, vehicle_data: dict, predictions: dict, health_score: float = 100):
     """
-    Show a Parts & Workshop Marketplace panel when at least one component is Critical.
+    Show a Parts & Workshop Marketplace panel for any vehicle with health score < 50.
     Parts prices are static estimates; workshop map uses Google Maps Places API if key is set.
+    AI diagnosis (OpenAI) shown at the top when key is available.
     """
-    if not any(r['priority'] == 'Critical' for r in recommendations):
+    if health_score >= 50:
         return
 
     with st.expander("🛒 Parts & Workshop Marketplace", expanded=False):
+        # AI diagnosis — top of the expander, before parts table
+        critical_names = tuple(
+            r['title'] for r in recommendations
+            if r['priority'] in ('Critical', 'High', 'Medium')
+        )
+        sensor_summary = ai_diagnosis.build_sensor_summary(
+            predictions, vehicle_data, vehicle_data['type']
+        )
+        diagnosis = ai_diagnosis.get_ai_diagnosis(
+            vehicle_data['name'], vehicle_data['type'], critical_names, sensor_summary
+        )
+        if diagnosis:
+            st.markdown(f"""
+<div style="background:rgba(79,195,247,0.08);border-left:3px solid #4fc3f7;
+            padding:12px 16px;border-radius:6px;margin-bottom:16px;">
+  <span style="color:#4fc3f7;font-size:12px;font-weight:600;letter-spacing:0.05em;">
+    🤖 AI DIAGNOSIS
+  </span><br>
+  <span style="color:#e0e0e0;font-size:14px;line-height:1.65;">{diagnosis}</span>
+</div>
+""", unsafe_allow_html=True)
+
         st.markdown(
             "Parts prices shown in EUR (estimated). "
             "Nearby workshops based on your vehicle's home city."
@@ -1725,8 +1749,8 @@ def main():
         # Cost analysis
         display_maintenance_costs(predictions, vehicle_data['type'], region=st.session_state.get("region", "US"))
 
-        # Parts & Workshop Marketplace (shown only when a component is Critical)
-        render_marketplace_panel(recommendations, vehicle_data)
+        # Parts & Workshop Marketplace (shown for any vehicle with health score < 50)
+        render_marketplace_panel(recommendations, vehicle_data, predictions, health_score)
 
 if __name__ == "__main__":
     main()

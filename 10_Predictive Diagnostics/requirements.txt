@@ -10,3 +10,4 @@ python-dotenv==1.0.0
 googlemaps==4.10.0
 folium==0.15.1
 streamlit-folium==0.18.0
+openai>=1.0.0
