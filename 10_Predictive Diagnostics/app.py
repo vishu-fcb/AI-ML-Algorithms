@@ -605,7 +605,7 @@ def _make_single_gauge(val, title, color):
         mode="gauge+number",
         value=float(val),
         number={"font": {"size": 22, "color": "white"}, "suffix": "%", "valueformat": ".1f"},
-        title={"text": title, "font": {"size": 13, "color": "#AAAAAA"}},
+        title={"text": f"<b>{title}</b>", "font": {"size": 16, "color": "#DDDDDD"}},
         domain={"x": [0, 1], "y": [0, 0.85]},
         gauge={
             "axis": {
@@ -1253,42 +1253,46 @@ def main():
         st.session_state.selected_vehicle = None
     
     # Main dashboard
+    # _fleet_slot is cleared instantly on navigation so fleet cards don't ghost behind detail view
+    _fleet_slot = st.empty()
     if st.session_state.selected_vehicle is None:
-        st.title(" BeyondTech - Vehicle Fleet Dashboard")
-        st.markdown("### Monitor and predict maintenance needs across your entire fleet")
-        st.markdown("---")
-        
-        # Fleet overview
-        cols = st.columns(min(len(vehicles_data), 5))
-        for idx, (vin, data) in enumerate(vehicles_data.items()):
-            with cols[idx % 5]:
-                predictions = make_predictions(models, data)
-                health_score = calculate_health_score(predictions, data['type'])
-                
-                status_color = '#00C853' if health_score > 80 else '#FFB366' if health_score > 60 else '#FF4444'
-                
-                st.markdown(f"""
-                <div class="vehicle-card">
-                    <h4 style="margin:0;">{data['name']}</h4>
-                    <p style="font-size:11px; color:#888; margin:5px 0;">{vin[:18]}...</p>
-                    <div style="display:flex; justify-content:space-between; margin-top:10px;">
-                        <div>
-                            <p style="margin:0; font-size:12px; color:#888;">Health</p>
-                            <p style="margin:0; font-size:24px; font-weight:bold; color:{status_color};">{health_score}</p>
-                        </div>
-                        <div style="text-align:right;">
-                            <p style="margin:0; font-size:12px; color:#888;">Type</p>
-                            <p style="margin:0; font-size:16px; font-weight:bold; color:#00C853;">{data['type']}</p>
+        with _fleet_slot.container():
+            st.title(" BeyondTech - Vehicle Fleet Dashboard")
+            st.markdown("### Monitor and predict maintenance needs across your entire fleet")
+            st.markdown("---")
+
+            # Fleet overview
+            cols = st.columns(min(len(vehicles_data), 5))
+            for idx, (vin, data) in enumerate(vehicles_data.items()):
+                with cols[idx % 5]:
+                    predictions = make_predictions(models, data)
+                    health_score = calculate_health_score(predictions, data['type'])
+
+                    status_color = '#00C853' if health_score > 80 else '#FFB366' if health_score > 60 else '#FF4444'
+
+                    st.markdown(f"""
+                    <div class="vehicle-card">
+                        <h4 style="margin:0;">{data['name']}</h4>
+                        <p style="font-size:11px; color:#888; margin:5px 0;">{vin[:18]}...</p>
+                        <div style="display:flex; justify-content:space-between; margin-top:10px;">
+                            <div>
+                                <p style="margin:0; font-size:12px; color:#888;">Health</p>
+                                <p style="margin:0; font-size:24px; font-weight:bold; color:{status_color};">{float(health_score):.1f}</p>
+                            </div>
+                            <div style="text-align:right;">
+                                <p style="margin:0; font-size:12px; color:#888;">Type</p>
+                                <p style="margin:0; font-size:16px; font-weight:bold; color:#00C853;">{data['type']}</p>
+                            </div>
                         </div>
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if st.button(f"View Details", key=f"btn_{vin}"):
-                    st.session_state.selected_vehicle = vin
-                    st.rerun()
-    
+                    """, unsafe_allow_html=True)
+
+                    if st.button(f"View Details", key=f"btn_{vin}"):
+                        st.session_state.selected_vehicle = vin
+                        st.rerun()
+
     else:
+        _fleet_slot.empty()  # wipe fleet cards before detail view renders
         # Vehicle detail view
         vehicle = st.session_state.selected_vehicle
 
