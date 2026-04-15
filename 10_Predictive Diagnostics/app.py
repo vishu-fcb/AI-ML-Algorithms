@@ -598,62 +598,55 @@ def create_degradation_forecast(predictions, vehicle_data, vehicle_type):
     return fig
 
 
-def create_gauges_row(health_score, batt_health, brake_health, tire_health, second_label="Battery Health"):
-    """Render all 4 KPI gauges as one single figure — immune to zoom misalignment."""
-    from plotly.subplots import make_subplots
-
-    values = [health_score, batt_health, brake_health, tire_health]
-    titles = ["Overall Health", second_label, "Brake Health", "Tire Health"]
-    colors = ['#00C853' if v > 70 else '#FFB366' if v > 40 else '#FF4444' for v in values]
-
-    fig = make_subplots(
-        rows=1, cols=4,
-        specs=[[{"type": "indicator"}] * 4],
-        horizontal_spacing=0.04,
-    )
-
-    for i, (val, title, color) in enumerate(zip(values, titles, colors), start=1):
-        fig.add_trace(
-            go.Indicator(
-                mode="gauge+number",
-                value=round(val, 1),
-                number={"font": {"size": 28, "color": "white"}, "suffix": "%"},
-                title={"text": title, "font": {"size": 13, "color": "#AAAAAA"}},
-                gauge={
-                    "axis": {
-                        "range": [0, 100],
-                        "tickwidth": 1,
-                        "tickcolor": "rgba(255,255,255,0.3)",
-                        "tickfont": {"size": 9, "color": "rgba(255,255,255,0.4)"},
-                        "nticks": 5,
-                    },
-                    "bar": {"color": color, "thickness": 0.7},
-                    "bgcolor": "rgba(0,0,0,0)",
-                    "borderwidth": 1,
-                    "bordercolor": "rgba(100,100,100,0.4)",
-                    "steps": [
-                        {"range": [0,  40], "color": "rgba(255,68,68,0.18)"},
-                        {"range": [40, 70], "color": "rgba(255,179,102,0.18)"},
-                        {"range": [70,100], "color": "rgba(0,200,83,0.18)"},
-                    ],
-                    "threshold": {
-                        "line": {"color": color, "width": 3},
-                        "thickness": 0.85,
-                        "value": round(val, 1),
-                    },
-                },
-            ),
-            row=1, col=i,
-        )
-
+def _make_single_gauge(val, title, color):
+    """Return a single responsive gauge figure for one KPI."""
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=float(val),
+        number={"font": {"size": 22, "color": "white"}, "suffix": "%", "valueformat": ".1f"},
+        title={"text": title, "font": {"size": 13, "color": "#AAAAAA"}},
+        domain={"x": [0, 1], "y": [0, 0.85]},
+        gauge={
+            "axis": {
+                "range": [0, 100],
+                "tickwidth": 1,
+                "tickcolor": "rgba(255,255,255,0.3)",
+                "tickfont": {"size": 9, "color": "rgba(255,255,255,0.4)"},
+                "nticks": 5,
+            },
+            "bar": {"color": color, "thickness": 0.7},
+            "bgcolor": "rgba(0,0,0,0)",
+            "borderwidth": 1,
+            "bordercolor": "rgba(100,100,100,0.4)",
+            "steps": [
+                {"range": [0,  40], "color": "rgba(255,68,68,0.18)"},
+                {"range": [40, 70], "color": "rgba(255,179,102,0.18)"},
+                {"range": [70,100], "color": "rgba(0,200,83,0.18)"},
+            ],
+            "threshold": {
+                "line": {"color": color, "width": 3},
+                "thickness": 0.85,
+                "value": float(val),
+            },
+        },
+    ))
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font={"color": "white"},
-        height=210,
-        margin=dict(l=20, r=20, t=30, b=10),
+        autosize=True,
+        height=230,
+        margin=dict(l=10, r=10, t=60, b=10),
     )
     return fig
+
+
+def create_gauges_row(health_score, batt_health, brake_health, tire_health, second_label="Battery Health"):
+    """Return 4 individual gauge figures — one per KPI column."""
+    values = [health_score, batt_health, brake_health, tire_health]
+    titles = ["Overall Health", second_label, "Brake Health", "Tire Health"]
+    colors = ['#00C853' if v > 70 else '#FFB366' if v > 40 else '#FF4444' for v in values]
+    return [_make_single_gauge(v, t, c) for v, t, c in zip(values, titles, colors)]
 
 
 def create_component_forecast(component_key, predictions, vehicle_data, days=90, auto_y=True):
@@ -1498,10 +1491,11 @@ def main():
             second_label = "Engine Health"
         brake_health = min((predictions.get('brake_thickness', 10) / 12) * 100, 100)
         tire_health  = min((predictions.get('tire_tread', 6) / 8) * 100, 100)
-        st.plotly_chart(
-            create_gauges_row(health_score, second_val, brake_health, tire_health, second_label),
-            use_container_width=True,
-        )
+        _gauge_figs = create_gauges_row(health_score, second_val, brake_health, tire_health, second_label)
+        _gcols = st.columns(4)
+        for _gcol, _gfig in zip(_gcols, _gauge_figs):
+            with _gcol:
+                st.plotly_chart(_gfig, use_container_width=True)
         
         # Key predictions
         st.markdown("---")

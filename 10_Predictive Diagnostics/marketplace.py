@@ -126,7 +126,7 @@ def get_gmaps_client():
 @st.cache_data(show_spinner="Fetching nearby workshops…")
 def _fetch_all_workshops(vehicle_name: str):
     """
-    Geocode all cities for this vehicle and fetch car_repair places.
+    Geocode the vehicle's home city and fetch car_repair places within 5 km.
     Result is cached for the entire Streamlit session — the API is called
     only ONCE per vehicle, no matter how many times the panel re-renders.
     Returns a list of workshop dicts: {name, rating, address, lat, lng}.
@@ -150,7 +150,7 @@ def _fetch_all_workshops(vehicle_name: str):
             pass
         return None
 
-    def places_near(lat, lng, radius=10000):
+    def places_near(lat, lng, radius=5000):
         try:
             res = gmaps.places_nearby(location=(lat, lng), radius=radius, type="car_repair")
             return res.get("results", [])
@@ -164,7 +164,7 @@ def _fetch_all_workshops(vehicle_name: str):
     seen = set()
     workshops = []
 
-    for raw in places_near(*home_coords, radius=10000):
+    for raw in places_near(*home_coords):
         try:
             lat = raw["geometry"]["location"]["lat"]
             lng = raw["geometry"]["location"]["lng"]
@@ -179,26 +179,6 @@ def _fetch_all_workshops(vehicle_name: str):
                 })
         except (KeyError, TypeError):
             continue
-
-    for city in config.get("extra_cities", []):
-        coords = geocode(city)
-        if not coords:
-            continue
-        for raw in places_near(*coords, radius=8000):
-            try:
-                lat = raw["geometry"]["location"]["lat"]
-                lng = raw["geometry"]["location"]["lng"]
-                key = (round(lat, 5), round(lng, 5))
-                if key not in seen:
-                    seen.add(key)
-                    workshops.append({
-                        "name": raw.get("name", "Workshop"),
-                        "rating": raw.get("rating", "N/A"),
-                        "address": raw.get("vicinity", ""),
-                        "lat": lat, "lng": lng,
-                    })
-            except (KeyError, TypeError):
-                continue
 
     return home_coords, workshops
 
@@ -260,7 +240,7 @@ def render_workshop_map(vehicle_name: str):
         return None
 
     home_lat, home_lng = home_coords
-    m = folium.Map(location=[home_lat, home_lng], zoom_start=6, tiles="CartoDB dark_matter")
+    m = folium.Map(location=[home_lat, home_lng], zoom_start=13, tiles="CartoDB dark_matter")
 
     folium.Marker(
         location=[home_lat, home_lng],
